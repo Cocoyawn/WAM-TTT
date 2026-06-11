@@ -33,18 +33,23 @@ The script: (1) refreshes `claude_assets/{memory,skills}/` from the out-of-repo
 | `claude_assets/memory` + `claude_assets/skills` | `.claude/scheduler_state.json` |
 
 ## Critical constraints (why the script is shaped this way)
-- **NO Claude attribution** ([[no-claude-attribution]]): commits use `git config user.name`=Cocoyawn
-  <cocoyawn2035@gmail.com> (set globally). Never add a `Co-Authored-By: Claude` trailer here.
-- **Push auth is finicky**: the git `credential.helper` points at a VSCode IPC socket. The handle in
-  the shell's env (`VSCODE_GIT_IPC_HANDLE`) is frequently a **stale/dead** socket → `ECONNREFUSED` /
-  "Authentication failed". The script works around this by selecting the NEWEST `/tmp/vscode-git-*.sock`
-  and bypassing the stale `credential.helper`. If push still fails, the user may need to run the push
-  themselves in their interactive terminal: `git push -u origin main` (or `! git push` in this session).
+- **Identity = Cocoyawn `<cocoyawn2035@gmail.com>`** ([[github-commit-identity]]): the script sets
+  `git config user.name/user.email` to this on every run (the box's default was wrongly `Shirk6`).
+  **NO Claude attribution** ([[no-claude-attribution]]) — never add a `Co-Authored-By: Claude` trailer.
+- **Push flakes two ways, both handled by forcing HTTP/1.1 + retrying:**
+  1. *Stale credential socket* — `credential.helper` points at a VSCode IPC socket; the handle in the
+     shell env (`VSCODE_GIT_IPC_HANDLE`) is often a **dead** socket → `ECONNREFUSED` / "Authentication
+     failed". Fix: pick the NEWEST `/tmp/vscode-git-*.sock` and bypass the stale helper.
+  2. *HTTP/2 framing errors / 443 timeouts* — the link to github.com is unstable; HTTP/2 multiplexes
+     everything onto one connection, so any blip kills the whole push with `Error in the HTTP2 framing
+     layer`. Fix: force `http.version=HTTP/1.1` (stateless, per-request, far more resilient) — set
+     globally AND per-push — and retry up to 5×. If it still fails the script exits non-zero; run
+     `git push` from an interactive terminal (or `! git push` in this session).
 - **Size guard**: a >90MB file aborts the commit — add it to `.gitignore` and retry. Logs are the
   biggest included items (~70M total); if they balloon, consider excluding `logs/` too.
 - Memory/skills live OUTSIDE the repo (`~/.claude/...`); they're only captured because the script
   copies them into `claude_assets/`. Editing them later requires a re-run to back up.
 
 ## After running
-Report the commit line + remote head short-sha, and confirm "no Claude attribution" in the author.
+Report the commit line + the pushed short-sha, and confirm the author is Cocoyawn (no Claude attribution).
 Related: [[scheduler-is-resource-entrypoint]], [[no-claude-attribution]].

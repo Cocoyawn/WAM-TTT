@@ -2830,3 +2830,147 @@ Current task success rate: 1.0
 Current total success rate: 0.848314606741573
 
   0%|          | 0/1 [00:00<?, ?it/s][A
+100%|██████████| 1/1 [04:13<00:00, 253.26s/it][A100%|██████████| 1/1 [04:13<00:00, 253.26s/it]
+ 88%|████████▊ | 179/203 [11:56:13<1:26:03, 215.13s/it]
+Task: pick up the black bowl in the top drawer of the wooden cabinet and place it on the plate light 12
+Starting episode 1...
+Saved rollout MP4 at path /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/ttt_chunk64_libero_spatial/libero_spatial_checkpoint_final_exec8_diff5_libero_plus_envgen_ttt64_shard6/episode=179--success=True--task=pick_up_the_black_bowl_in_the_top_drawer_of_the_wooden_cabinet_and_place_it_on_the_plate_light_12.mp4
+Success: True
+# episodes completed so far: 179
+# successes: 152 (84.9%)
+--- Category Success Rates ---
+Background: 32/32 (100.0%)
+Robot: 42/44 (95.5%)
+Camera: 27/47 (57.4%)
+Noise: 39/44 (88.6%)
+Light: 12/12 (100.0%)
+Current task success rate: 1.0
+Current total success rate: 0.8491620111731844
+
+  0%|          | 0/1 [00:00<?, ?it/s][A
+100%|██████████| 1/1 [04:00<00:00, 240.02s/it][A100%|██████████| 1/1 [04:00<00:00, 240.02s/it]
+ 89%|████████▊ | 180/203 [12:00:16<1:25:36, 223.31s/it]
+Task: pick up the black bowl in the top drawer of the wooden cabinet and place it on the plate light 2
+Starting episode 1...
+Saved rollout MP4 at path /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/ttt_chunk64_libero_spatial/libero_spatial_checkpoint_final_exec8_diff5_libero_plus_envgen_ttt64_shard6/episode=180--success=True--task=pick_up_the_black_bowl_in_the_top_drawer_of_the_wooden_cabinet_and_place_it_on_the_plate_light_2.mp4
+Success: True
+# episodes completed so far: 180
+# successes: 153 (85.0%)
+--- Category Success Rates ---
+Background: 32/32 (100.0%)
+Robot: 42/44 (95.5%)
+Camera: 27/47 (57.4%)
+Noise: 39/44 (88.6%)
+Light: 13/13 (100.0%)
+Current task success rate: 1.0
+Current total success rate: 0.85
+
+  0%|          | 0/1 [00:00<?, ?it/s][A
+100%|██████████| 1/1 [04:18<00:00, 258.04s/it][A100%|██████████| 1/1 [04:18<00:00, 258.04s/it]
+ 89%|████████▉ | 181/203 [12:04:36<1:25:57, 234.45s/it]
+Task: pick up the black bowl in the top drawer of the wooden cabinet and place it on the plate light 27
+Starting episode 1...
+Saved rollout MP4 at path /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/ttt_chunk64_libero_spatial/libero_spatial_checkpoint_final_exec8_diff5_libero_plus_envgen_ttt64_shard6/episode=181--success=True--task=pick_up_the_black_bowl_in_the_top_drawer_of_the_wooden_cabinet_and_place_it_on_the_plate_light_27.mp4
+Success: True
+# episodes completed so far: 181
+# successes: 154 (85.1%)
+--- Category Success Rates ---
+Background: 32/32 (100.0%)
+Robot: 42/44 (95.5%)
+Camera: 27/47 (57.4%)
+Noise: 39/44 (88.6%)
+Light: 14/14 (100.0%)
+Current task success rate: 1.0
+Current total success rate: 0.850828729281768
+
+  0%|          | 0/1 [00:00<?, ?it/s][A
+100%|██████████| 1/1 [04:25<00:00, 265.34s/it][A100%|██████████| 1/1 [04:25<00:00, 265.34s/it]
+ 90%|████████▉ | 182/203 [12:09:04<1:25:34, 244.52s/it]
+Task: pick up the black bowl in the top drawer of the wooden cabinet and place it on the plate light 35
+Starting episode 1...
+Saved rollout MP4 at path /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/ttt_chunk64_libero_spatial/libero_spatial_checkpoint_final_exec8_diff5_libero_plus_envgen_ttt64_shard6/episode=182--success=True--task=pick_up_the_black_bowl_in_the_top_drawer_of_the_wooden_cabinet_and_place_it_on_the_plate_light_35.mp4
+Success: True
+# episodes completed so far: 182
+# successes: 155 (85.2%)
+--- Category Success Rates ---
+Background: 32/32 (100.0%)
+Robot: 42/44 (95.5%)
+Camera: 27/47 (57.4%)
+Noise: 39/44 (88.6%)
+Light: 15/15 (100.0%)
+Current task success rate: 1.0
+Current total success rate: 0.8516483516483516
+
+  0%|          | 0/1 [00:00<?, ?it/s][A
+100%|██████████| 1/1 [04:10<00:00, 250.84s/it][A100%|██████████| 1/1 [04:10<00:00, 250.84s/it]
+ 90%|█████████ | 183/203 [12:13:17<1:22:22, 247.12s/it]
+Task: pick up the black bowl in the top drawer of the wooden cabinet and place it on the plate light 43
+Starting episode 1...
+Saved rollout MP4 at path /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/ttt_chunk64_libero_spatial/libero_spatial_checkpoint_final_exec8_diff5_libero_plus_envgen_ttt64_shard6/episode=183--success=True--task=pick_up_the_black_bowl_in_the_top_drawer_of_the_wooden_cabinet_and_place_it_on_the_plate_light_43.mp4
+Success: True
+# episodes completed so far: 183
+# successes: 156 (85.2%)
+--- Category Success Rates ---
+Background: 32/32 (100.0%)
+Robot: 42/44 (95.5%)
+Camera: 27/47 (57.4%)
+Noise: 39/44 (88.6%)
+Light: 16/16 (100.0%)
+Current task success rate: 1.0
+Current total success rate: 0.8524590163934426
+
+  0%|          | 0/1 [00:00<?, ?it/s][A
+100%|██████████| 1/1 [04:29<00:00, 269.97s/it][A100%|██████████| 1/1 [04:29<00:00, 269.97s/it]
+ 91%|█████████ | 184/203 [12:17:50<1:20:41, 254.80s/it]
+Task: pick up the black bowl in the top drawer of the wooden cabinet and place it on the plate light 9
+Starting episode 1...
+Saved rollout MP4 at path /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/ttt_chunk64_libero_spatial/libero_spatial_checkpoint_final_exec8_diff5_libero_plus_envgen_ttt64_shard6/episode=184--success=True--task=pick_up_the_black_bowl_in_the_top_drawer_of_the_wooden_cabinet_and_place_it_on_the_plate_light_9.mp4
+Success: True
+# episodes completed so far: 184
+# successes: 157 (85.3%)
+--- Category Success Rates ---
+Background: 32/32 (100.0%)
+Robot: 42/44 (95.5%)
+Camera: 27/47 (57.4%)
+Noise: 39/44 (88.6%)
+Light: 17/17 (100.0%)
+Current task success rate: 1.0
+Current total success rate: 0.8532608695652174
+
+  0%|          | 0/1 [00:00<?, ?it/s][A
+100%|██████████| 1/1 [03:13<00:00, 193.56s/it][A100%|██████████| 1/1 [03:13<00:00, 193.56s/it]
+ 91%|█████████ | 185/203 [12:21:06<1:11:09, 237.19s/it]
+Task: pick up the black bowl next to the cookie box and place it on the plate light 20
+Starting episode 1...
+Saved rollout MP4 at path /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/ttt_chunk64_libero_spatial/libero_spatial_checkpoint_final_exec8_diff5_libero_plus_envgen_ttt64_shard6/episode=185--success=True--task=pick_up_the_black_bowl_next_to_the_cookie_box_and_place_it_on_the_plate_light_20.mp4
+Success: True
+# episodes completed so far: 185
+# successes: 158 (85.4%)
+--- Category Success Rates ---
+Background: 32/32 (100.0%)
+Robot: 42/44 (95.5%)
+Camera: 27/47 (57.4%)
+Noise: 39/44 (88.6%)
+Light: 18/18 (100.0%)
+Current task success rate: 1.0
+Current total success rate: 0.8540540540540541
+
+  0%|          | 0/1 [00:00<?, ?it/s][A
+100%|██████████| 1/1 [03:13<00:00, 193.37s/it][A100%|██████████| 1/1 [03:13<00:00, 193.37s/it]
+ 92%|█████████▏| 186/203 [12:24:22<1:03:41, 224.77s/it]
+Task: pick up the black bowl next to the cookie box and place it on the plate light 34
+Starting episode 1...
+Saved rollout MP4 at path /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/ttt_chunk64_libero_spatial/libero_spatial_checkpoint_final_exec8_diff5_libero_plus_envgen_ttt64_shard6/episode=186--success=True--task=pick_up_the_black_bowl_next_to_the_cookie_box_and_place_it_on_the_plate_light_34.mp4
+Success: True
+# episodes completed so far: 186
+# successes: 159 (85.5%)
+--- Category Success Rates ---
+Background: 32/32 (100.0%)
+Robot: 42/44 (95.5%)
+Camera: 27/47 (57.4%)
+Noise: 39/44 (88.6%)
+Light: 19/19 (100.0%)
+Current task success rate: 1.0
+Current total success rate: 0.8548387096774194
+
+  0%|          | 0/1 [00:00<?, ?it/s][A
