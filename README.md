@@ -1,234 +1,127 @@
 # WAM-TTT: Token-Mixer Ablations for VLA World Models
 
 A research fork of **[VLANeXt](https://github.com/DravenALG/VLANeXt)** (ICML 2026) that ablates the
-**token mixer** inside the vision world-model DiT — comparing **softmax attention**, **TTT**
-(test-time-training fast-weight), **GatedDeltaNet (GDN)**, and **sliding-window attention (SWA)** — and
-measures their **robustness under environment perturbations** on LIBERO / LIBERO-plus.
+**token mixer** in the vision world-model DiT — softmax attention, **TTT** (test-time-training
+fast-weight), **GatedDeltaNet (GDN)**, and **sliding-window attention (SWA)** — and quantifies their
+**robustness under environment perturbations** on LIBERO / LIBERO-plus.
 
-> This repo is the **code + experiment-tooling backup** of the work. The ~400 GB of checkpoints,
-> rendered videos, and benchmark assets are intentionally **not** tracked (see [What's *not* here](#whats-not-in-this-repo)).
-> Everything you need to *re-run* the experiments is here.
->
-> Base codebase, models, and benchmarks are **VLANeXt** by Xiao-Ming Wu et al. (S-Lab NTU; SYSU; ACE
-> Robotics) — see [Citation & credit](#citation--credit). This fork adds the mixer ablation, the job
-> scheduler, the env-gen severity analysis, and the tooling described below.
+This repository is the **code and tooling backup** of the work; checkpoints, rendered videos, and
+benchmark assets (~400 GB) are excluded (see [Exclusions](#exclusions)). All material required to
+reproduce the experiments is present.
 
----
+## Contributions
 
-## TL;DR — what this fork adds
-
-| Area | What | Where |
+| Component | Description | Location |
 |---|---|---|
-| **Mixer ablation** | TTT / GDN / SWA / SWA+GDN / SWA+TTT mixers in the generator DiT | `src/models/{ttt,linear_attn_mixer,generator}.py` |
-| **Block-causal TTT** | `chunk_size` controls TTT block granularity (16 blocks → 1 block/frame) | `generator_ttt_chunk_size` in configs |
-| **Job scheduler** | concurrent, fault-tolerant GPU/RAM orchestrator for *all* trainings + evals | `scripts/scheduler.py` |
-| **Env-gen eval** | sharded LIBERO-plus generalization eval (1627 tasks, 5 perturbation dims) | `scripts/libero_plus_bench_eval.py`, `config/libero_plus_envgen_*` |
-| **Severity analysis** | re-aggregate results by `difficulty_level` 1-5 → robustness-vs-strength curves | `scripts/plot_severity_curves.py`, `scripts/aggregate_envgen.py` |
+| Mixer ablation | TTT / GDN / SWA / SWA+GDN / SWA+TTT in the generator DiT | `src/models/{ttt,linear_attn_mixer,generator}.py` |
+| Block-causal TTT | `chunk_size` sets TTT block granularity (16 blocks → 1 block/frame) | `generator_ttt_chunk_size` |
+| Job scheduler | Fault-tolerant GPU/RAM orchestrator for all trainings and evals | `scripts/scheduler.py` |
+| Env-gen eval | Sharded LIBERO-plus generalization eval (1627 tasks, 5 dimensions) | `scripts/libero_plus_bench_eval.py` |
+| Severity analysis | Re-aggregation by `difficulty_level` 1–5 → robustness curves | `scripts/{aggregate_envgen,plot_severity_curves}.py` |
 
-**Headline result:** TTT's fast-weight online adaptation gives a **robustness-slope** advantage that
-*widens with perturbation strength*. At the hardest sensor-noise level TTT holds ~100% success while
-softmax attention collapses to ~33%. See [Key results](#key-results).
+**Principal finding.** TTT's online adaptation yields a robustness advantage that *widens with
+perturbation strength*: at the highest sensor-noise level TTT retains ≈100% success while softmax
+attention falls to ≈33% (see [Results](#results)).
 
----
-
-## Repository layout
-
-```
-src/
-  models/
-    VLANeXt.py            # top-level VLA: encoder → connector → generator(world model) → policy
-    generator.py          # the vision DiT; mixer dispatch + SWA / block-causal masks
-    ttt.py                # TTT fast-weight mixer (block-causal, chunk_size)
-    linear_attn_mixer.py  # GatedDeltaNet / linear-attention mixers
-    test_*.py             # unit + e2e tests — good entry points to understand each module
-  datasets/               # libero_act / droid_act dataloaders
-  evaluation/             # libero_bench + libero_plus_bench eval harnesses
-config/                   # 90 YAML configs — one per training run / eval shard (see below)
-scripts/
-  train.py                # single entry point for ALL trainings (torchrun DDP)
-  scheduler.py            # resource-managed job runner (preferred launch path)
-  libero_plus_bench_eval.py   # env-gen eval worker (one shard)
-  aggregate_envgen.py     # results → per-dimension table (handles 3 known pitfalls)
-  plot_severity_curves.py # results → robustness-vs-difficulty curves
-  plot_loss.py            # ASCII loss curve from a live log (no wandb needed)
-  exp_status.py           # disk/RAM/GPU + all run statuses at a glance
-docs/                     # result figures (severity_curves.png, attn_mask_comparison.png)
-claude_assets/            # project memory notes + experiment-management skills (see below)
-*.md                      # design docs: TTT_ARCHITECTURE, DESIGN_SPACE, RESULTS, COMMON_ISSUES
-```
-
----
-
-## Environment setup
+## Setup
 
 ```bash
 conda create -n VLANeXt python=3.10 && conda activate VLANeXt
 pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cu124
-pip install -r requirements.txt
-pip install flash-attn --no-build-isolation
-conda install -c conda-forge ffmpeg
+pip install -r requirements.txt && pip install flash-attn --no-build-isolation
 ```
 
-**Benchmarks** (not vendored — clone into `third_party/`):
+Benchmarks are not vendored — clone into `third_party/`:
+
 ```bash
 cd third_party
-# LIBERO
-git clone https://github.com/Lifelong-Robot-Learning/LIBERO.git && cd LIBERO && pip install . && cd ..
-# LIBERO-plus (robustness benchmark; we pinned HEAD 4976dc3)
-git clone https://github.com/sylvestf/LIBERO-plus.git && cd LIBERO-plus && pip install .
-apt install libexpat1 libfontconfig1-dev libpython3-stdlib libmagickwand-dev
-pip install -r extra_requirements.txt
-conda env config vars set LIBERO_CONFIG_PATH=~/.libero_plus
-# then download the LIBERO-plus assets per its README
+git clone https://github.com/Lifelong-Robot-Learning/LIBERO.git      && pip install -e LIBERO
+git clone https://github.com/sylvestf/LIBERO-plus.git                && pip install -e LIBERO-plus  # pin 4976dc3
 ```
 
-**Data:** OpenVLA-modified LIBERO episodes:
-```bash
-hf download openvla/modified_libero_rlds --repo-type dataset --local-dir LIBERO_modified
-```
-Set `data.data_root` in each config to your local path (ours: `~/data/LIBERO_modified/`), and
-`model.pretrained_checkpoint` to your encoder/init checkpoint.
+Download the OpenVLA-modified LIBERO episodes and the LIBERO-plus assets per their READMEs, then set
+`data.data_root` and `model.pretrained_checkpoint` in each config.
 
-> **PYTHONPATH gotcha** (the #1 setup error): training needs `PYTHONPATH=$REPO`; LIBERO-plus eval needs
-> `PYTHONPATH=$REPO/third_party/LIBERO-plus:$REPO` **and** you must `cd` into `third_party/LIBERO-plus`
-> (and set `LIBERO_CONFIG_PATH`, `MUJOCO_GL=osmesa`), else `ModuleNotFoundError: libero`. The provided
-> launch scripts set all of this for you.
+> **PYTHONPATH.** Training requires `PYTHONPATH=$REPO`. LIBERO-plus eval requires
+> `PYTHONPATH=$REPO/third_party/LIBERO-plus:$REPO`, a `cd` into `third_party/LIBERO-plus`, and
+> `MUJOCO_GL=osmesa` — otherwise `ModuleNotFoundError: libero`. The launch scripts set these.
 
----
-
-## Quick start
-
-### 1. Train a world model (single run)
-```bash
-PYTHONPATH=$PWD torchrun --nproc_per_node=4 --master_port=29505 \
-    scripts/train.py --config config/ablation_wm_ttt_chunk256.yaml
-```
-`batch_size` in the config is the **total** across GPUs (auto-divided by `world_size`). Each run writes
-`VLANeXt_ablation_wm/<save_dir>/checkpoint_final.pt`. **Keep `save_interval: 10000`** — the default 2000
-fills disk (each WM checkpoint is ~20 GB).
-
-### 2. Run the env-gen generalization eval (8-way sharded)
-```bash
-REPO=$PWD; cd third_party/LIBERO-plus
-for s in $(seq 0 7); do
-  MUJOCO_GL=osmesa PYOPENGL_PLATFORM=osmesa LIBERO_CONFIG_PATH=~/.libero_plus \
-  PYTHONPATH=$REPO/third_party/LIBERO-plus:$REPO \
-  python $REPO/scripts/libero_plus_bench_eval.py \
-      --config $REPO/config/libero_plus_envgen_ttt256_shard${s}.yaml &
-done; wait
-```
-
-### 3. Aggregate + plot
-```bash
-python scripts/aggregate_envgen.py          # per-dimension TTT-16 / TTT-256 / Attention table
-python scripts/plot_severity_curves.py      # robustness vs difficulty_level → docs/severity_curves.png
-python scripts/plot_loss.py swa_ttt         # live ASCII loss curve for any run
-python scripts/exp_status.py                # disk/RAM/GPU + every run's status
-```
-
-### Recommended: launch everything through the scheduler
-Rather than launching by hand, append a job to the `QUEUE` in `scripts/scheduler.py` and let it pack
-jobs onto the GPUs with a dual **GPU-free + cgroup-RAM** gate (prevents the OOM / port-collision /
-silent-skip failures that ad-hoc launches cause):
+## Usage
 
 ```bash
-tmux new-session -d -s vlanext-sched -c $PWD
-tmux send-keys -t vlanext-sched "python scripts/scheduler.py 2>&1 | tee logs/scheduler.log" Enter
-python scripts/scheduler.py --status     # queue + per-job status
+# Train (batch_size is the total across GPUs; keep save_interval: 10000)
+PYTHONPATH=$PWD torchrun --nproc_per_node=4 scripts/train.py --config config/ablation_wm_ttt_chunk256.yaml
+
+# Env-gen eval, 8-way sharded (run from third_party/LIBERO-plus)
+python scripts/libero_plus_bench_eval.py --config config/libero_plus_envgen_ttt256_shard${s}.yaml
+
+# Aggregate and plot
+python scripts/aggregate_envgen.py            # per-dimension table
+python scripts/plot_severity_curves.py        # robustness vs. difficulty → docs/severity_curves.png
 ```
-Two job kinds: `train` (N-GPU DDP, `gpus` configurable) and `eval` (N single-GPU shard workers that
-co-reside on cards and elastically scale to free RAM). Details in `claude_assets/skills/vlanext-scheduler`.
 
----
+For multi-job runs, append to the `QUEUE` in `scripts/scheduler.py` and launch the scheduler under
+`tmux`; it packs jobs across GPUs under a combined GPU-free and cgroup-RAM gate. Status via
+`python scripts/scheduler.py --status`.
 
-## Understanding the configs
+## Configuration
 
-Configs are named `ablation_wm_<mixer>[_<chunk>][_<suite>].yaml`. The mixer is chosen by a few fields:
+Configs are named `ablation_wm_<mixer>[_<chunk>][_<suite>].yaml`. The mixer is selected by:
 
 ```yaml
 model:
   generator_mixer_type: "ttt"        # attention | ttt | gdn | swa
-  generator_mix_every_n: 4           # every 4th DiT layer is a mixer layer (→ 7 of 29 layers)
-  generator_ttt_chunk_size: 256      # TTT block size: 16 → 16 blocks/frame; 256 → 1 block/frame
-  generator_fallback_mixer: "swa"    # (SWA+X variants) non-mixer layers use sliding-window attn
-  generator_swa_window_size: 64      # SWA causal window in tokens
+  generator_mix_every_n: 4           # every 4th DiT layer is a mixer layer (7 of 29)
+  generator_ttt_chunk_size: 256      # 16 → 16 blocks/frame; 256 → 1 block/frame
+  generator_fallback_mixer: "swa"    # SWA+X variants
+  generator_swa_window_size: 64
 train:
-  distributed: true                  # REQUIRED for multi-GPU — false makes all ranks land on GPU0
-  batch_size: 16                     # TOTAL across GPUs
-  warmup_steps: 1500
+  distributed: true                  # required for multi-GPU; false collapses all ranks onto GPU0
 data:
-  max_steps: 30000                   # 30k for spatial/object/goal; ×1.2 for long
-                                     # NOTE train.py reads data.max_steps (not train.max_steps)
+  max_steps: 30000                   # ×1.2 for the long suite; read from data.max_steps
 ```
 
-> **GDN stability:** GatedDeltaNet diverges at lr 1e-4 (loss → 14.5). Use **lr 5e-5, warmup 3000,
-> grad_clip 0.5** (the `*_gdn_retrain` recipe) — converges to ~5.6.
+> **GDN stability.** GatedDeltaNet diverges at lr 1e-4. Use lr 5e-5, warmup 3000, grad_clip 0.5.
 
-A guided tour of the full **12 design spaces** from the base paper is in
-[DESIGN_SPACE.md](DESIGN_SPACE.md); mixer internals in [TTT_ARCHITECTURE.md](TTT_ARCHITECTURE.md);
-known pitfalls in [COMMON_ISSUES.md](COMMON_ISSUES.md).
+See [DESIGN_SPACE.md](DESIGN_SPACE.md), [TTT_ARCHITECTURE.md](TTT_ARCHITECTURE.md), and
+[COMMON_ISSUES.md](COMMON_ISSUES.md) for details.
 
----
+## Results
 
-## Key results
+LIBERO-spatial trained; evaluated on LIBERO-plus env-gen (1627 tasks, 5 dimensions, all configs aligned).
 
-LIBERO-spatial trained, evaluated on **LIBERO-plus env-gen (1627 tasks, 5 perturbation dimensions)**.
-
-**Per-dimension success rate (all configs aligned):**
-
-| Dimension | TTT-16 | **TTT-256** | Attention |
+| Dimension | TTT-16 | TTT-256 | Attention |
 |---|---|---|---|
-| Camera | 69.1% | **78.7%** | 70.2% |
-| Light | 99.0% | 99.0% | 98.6% |
-| Background | 96.5% | 97.7% | 98.1% |
-| Noise | 98.0% | 95.4% | 80.9% |
-| Robot | 80.3% | **82.9%** | 69.4% |
-| **Total** | 87.5% | **89.9%** | 81.9% |
+| Camera | 69.1 | **78.7** | 70.2 |
+| Light | 99.0 | 99.0 | 98.6 |
+| Background | 96.5 | 97.7 | 98.1 |
+| Noise | 98.0 | 95.4 | 80.9 |
+| Robot | 80.3 | **82.9** | 69.4 |
+| **Total** | 87.5 | **89.9** | 81.9 |
 
-**Robustness vs. perturbation strength** (`difficulty_level` 1→5, success-rate drop; smaller = more robust):
+Success-rate drop from difficulty level 1 to 5 (smaller is more robust):
 
-| Dim | TTT-16 | TTT-256 | Attention |
+| Dimension | TTT-16 | TTT-256 | Attention |
 |---|---|---|---|
-| Noise | 100→100 (**0**) | 96→75 (−21) | 90→**33** (**−57**) |
-| Robot | 97→60 (−37) | 99→53 (−46) | 97→**29** (**−68**) |
-| Camera | 81→82 (+1) | 96→95 (0) | 88→68 (−20) |
+| Noise | **0** | −21 | **−57** |
+| Robot | −37 | −46 | **−68** |
+| Camera | +1 | 0 | −20 |
 
-→ The TTT advantage is **concentrated at high severity**: at clean/low levels everyone ties; TTT's
-fast-weight online adaptation degrades far more gracefully as the perturbation strengthens. This is the
-core evidence for the online-adaptation claim. Figure: `docs/severity_curves.png`.
+The advantage concentrates at high severity: configurations tie at low perturbation, and TTT degrades
+far more gracefully as strength increases (`docs/severity_curves.png`).
 
----
+## Exclusions
 
-## What's *not* in this repo
+Excluded via `.gitignore` (~85 MB tracked vs. ~400 GB on disk): checkpoints and model outputs
+(`VLANeXt_ablation_wm/`, `VLANeXt_final_libero/`, `*.pt`); benchmarks (`third_party/`); demo videos
+(`docs/static/`, `*.mp4`); W&B run directories. Training and evaluation text logs (`logs/`) are retained.
 
-Excluded via `.gitignore` to keep the backup small (~85 MB vs ~400 GB on disk):
+`claude_assets/` versions the project notes (`memory/`) and the experiment-management procedures
+(`skills/`); both are documentation and automation only.
 
-- **Checkpoints / model outputs** — `VLANeXt_ablation_wm/`, `VLANeXt_final_libero/`, all `*.pt`
-- **Benchmarks** — `third_party/` (clone from upstream; LIBERO-plus pin HEAD `4976dc3`)
-- **Demo videos** — `docs/static/`, all `*.mp4`
-- **W&B run dirs** — `wandb/`
+## Citation
 
-Training/eval **text logs** (`logs/`) *are* included so loss/eval trajectories are reproducible.
-
----
-
-## `claude_assets/` — experiment-management tooling
-
-This project was run with an AI-assisted experiment loop. `claude_assets/` versions the durable parts:
-- **`memory/`** — project notes: resource limits, GDN stability recipe, env-gen results, conventions.
-  A condensed lab notebook.
-- **`skills/`** — reusable procedures: `vlanext-scheduler` (job orchestration), `vlanext-experiments`
-  (status/launch), `vlanext-plot-loss`, `vlanext-wandb`, `vlanext-backup`.
-
-Documentation/automation only — the experiments run fine without them.
-
----
-
-## Citation & credit
-
-This is a research fork. The base codebase, models, and benchmark are **VLANeXt** (ICML 2026) by
-Xiao-Ming Wu, Bin Fan, Kang Liao, Jian-Jian Jiang, Runze Yang, Yihang Luo, Zhonghua Wu, Wei-Shi Zheng,
-and Chen Change Loy (S-Lab NTU; Sun Yat-sen University; ACE Robotics):
+The base codebase, models, and benchmark are VLANeXt (ICML 2026):
 
 ```bibtex
 @article{wu2026vlanext,
@@ -241,5 +134,5 @@ and Chen Change Loy (S-Lab NTU; Sun Yat-sen University; ACE Robotics):
 
 Upstream: [VLANeXt](https://github.com/DravenALG/VLANeXt) ·
 [LIBERO](https://github.com/Lifelong-Robot-Learning/LIBERO) ·
-[LIBERO-plus](https://github.com/sylvestf/LIBERO-plus). Please cite and follow their licenses
-(base project: NTU S-Lab License 1.0, see [LICENSE](LICENSE)).
+[LIBERO-plus](https://github.com/sylvestf/LIBERO-plus). Please observe their licenses (base project:
+NTU S-Lab License 1.0, see [LICENSE](LICENSE)).
