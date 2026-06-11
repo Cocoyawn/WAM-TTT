@@ -6,8 +6,8 @@ fast-weight), **GatedDeltaNet (GDN)**, and **sliding-window attention (SWA)** �
 **robustness under environment perturbations** on LIBERO / LIBERO-plus.
 
 This repository is the **code and tooling backup** of the work; checkpoints, rendered videos, and
-benchmark assets (~400 GB) are excluded (see [Exclusions](#exclusions)). All material required to
-reproduce the experiments is present.
+benchmark assets (~400 GB) are excluded via `.gitignore`. All material required to reproduce the
+experiments is present.
 
 ## Contributions
 
@@ -60,9 +60,48 @@ python scripts/aggregate_envgen.py            # per-dimension table
 python scripts/plot_severity_curves.py        # robustness vs. difficulty → docs/severity_curves.png
 ```
 
-For multi-job runs, append to the `QUEUE` in `scripts/scheduler.py` and launch the scheduler under
-`tmux`; it packs jobs across GPUs under a combined GPU-free and cgroup-RAM gate. Status via
-`python scripts/scheduler.py --status`.
+For multi-job runs, prefer the scheduler over launching by hand (see below).
+
+## Scheduler
+
+`scripts/scheduler.py` is the single entry point for running every training and evaluation on the box.
+It packs jobs across the GPUs concurrently under a combined **GPU-free + cgroup-RAM** gate, leases
+GPUs so jobs never collide, detects crashes and retries them, and persists state so a restart resumes.
+Routing all work through it avoids the out-of-memory, port-collision, and silently-skipped-run failures
+that ad-hoc launches cause.
+
+**Define the work.** Edit the `QUEUE` list — a priority-ordered list of two job kinds:
+
+```python
+QUEUE = [
+    # eval: N single-GPU shard workers; done when every shard writes an *_SR* result dir
+    {"kind": "eval",  "tag": "ttt64_envgen", "prefix": "ttt64", "nshards": 8,
+     "result_dir": "ttt_chunk64_libero_spatial", "shard_glob": "envgen_ttt64_shard"},
+    # train: N-GPU torchrun DDP; done when checkpoint_final.pt exists; gpus defaults to 2
+    {"kind": "train", "tag": "swa_ttt", "cfg": "ablation_wm_swa_ttt",
+     "save_dir": "swa_ttt_libero_spatial", "gpus": 4},
+]
+```
+
+A `train` job needs a `config/<cfg>.yaml` (with `distributed: true` and `save_interval: 10000`); an
+`eval` job needs its `config/libero_plus_envgen_<prefix>_shard{0..N-1}.yaml` shards. Eval workers
+co-reside on cards (~1 GPU + 22 GB RAM each, up to `EVAL_MAX_WORKERS`) and scale elastically as RAM
+frees; training jobs lease whole cards. Higher-priority jobs claim resources first, and spare capacity
+is filled by lower-priority jobs automatically.
+
+**Run it** under `tmux` (long-lived, reattachable):
+
+```bash
+tmux new-session -d -s vlanext-sched -c $PWD
+tmux send-keys -t vlanext-sched "python scripts/scheduler.py 2>&1 | tee logs/scheduler.log" Enter
+
+python scripts/scheduler.py --status     # queue + per-job status (done / running / queued / failed)
+touch .scheduler_stop                     # graceful stop (running jobs keep going)
+```
+
+Tunables (GPU/RAM thresholds, poll cadence, retry count) are constants at the top of the file. The
+launched trainings and eval workers are independent process groups, so they survive a scheduler
+restart; only the watcher lives in `tmux`.
 
 ## Configuration
 
@@ -86,7 +125,7 @@ data:
 See [DESIGN_SPACE.md](DESIGN_SPACE.md), [TTT_ARCHITECTURE.md](TTT_ARCHITECTURE.md), and
 [COMMON_ISSUES.md](COMMON_ISSUES.md) for details.
 
-## Results
+## Key Results
 
 LIBERO-spatial trained; evaluated on LIBERO-plus env-gen (1627 tasks, 5 dimensions, all configs aligned).
 
@@ -99,25 +138,11 @@ LIBERO-spatial trained; evaluated on LIBERO-plus env-gen (1627 tasks, 5 dimensio
 | Robot | 80.3 | **82.9** | 69.4 |
 | **Total** | 87.5 | **89.9** | 81.9 |
 
-Success-rate drop from difficulty level 1 to 5 (smaller is more robust):
+Resolving success rate by perturbation strength (`difficulty_level` 1–5) exposes the central result:
+configurations tie at low perturbation, but TTT degrades far more gracefully as strength increases,
+whereas softmax attention collapses — most sharply on sensor noise and robot initial states.
 
-| Dimension | TTT-16 | TTT-256 | Attention |
-|---|---|---|---|
-| Noise | **0** | −21 | **−57** |
-| Robot | −37 | −46 | **−68** |
-| Camera | +1 | 0 | −20 |
-
-The advantage concentrates at high severity: configurations tie at low perturbation, and TTT degrades
-far more gracefully as strength increases (`docs/severity_curves.png`).
-
-## Exclusions
-
-Excluded via `.gitignore` (~85 MB tracked vs. ~400 GB on disk): checkpoints and model outputs
-(`VLANeXt_ablation_wm/`, `VLANeXt_final_libero/`, `*.pt`); benchmarks (`third_party/`); demo videos
-(`docs/static/`, `*.mp4`); W&B run directories. Training and evaluation text logs (`logs/`) are retained.
-
-`claude_assets/` versions the project notes (`memory/`) and the experiment-management procedures
-(`skills/`); both are documentation and automation only.
+![Robustness vs. perturbation strength](docs/severity_curves.png)
 
 ## Citation
 
