@@ -2615,3 +2615,20 @@ Current task success rate: 0.0
 Current total success rate: 0.7710843373493976
 
   0%|          | 0/1 [00:00<?, ?it/s][A
+100%|██████████| 1/1 [06:52<00:00, 412.15s/it][A100%|██████████| 1/1 [06:52<00:00, 412.15s/it]
+ 82%|████████▏ | 167/203 [11:47:57<3:28:54, 348.19s/it]
+Task: pick up the black bowl on the wooden cabinet and place it on the plate view 0 0 100 0 0 initstate 0 noise 48
+Starting episode 1...
+Saved rollout MP4 at path /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/ttt_chunk64_libero_spatial/libero_spatial_checkpoint_final_exec8_diff5_libero_plus_envgen_ttt64_shard4/episode=167--success=True--task=pick_up_the_black_bowl_on_the_wooden_cabinet_and_place_it_on_the_plate_view_0_0_100_0_0_initstate_0_.mp4
+Success: True
+# episodes completed so far: 167
+# successes: 129 (77.2%)
+--- Category Success Rates ---
+Background: 32/32 (100.0%)
+Robot: 34/44 (77.3%)
+Camera: 26/47 (55.3%)
+Noise: 37/44 (84.1%)
+Current task success rate: 1.0
+Current total success rate: 0.7724550898203593
+
+  0%|          | 0/1 [00:00<?, ?it/s][A

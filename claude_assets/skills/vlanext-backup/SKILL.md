@@ -19,7 +19,7 @@ bash scripts/backup_to_github.sh "msg describing what changed"
 
 The script: (1) refreshes `claude_assets/{memory,skills}/` from the out-of-repo
 `~/.claude` locations so they get versioned; (2) `git add -A`; (3) **aborts if any staged file
-> 90MB** (GitHub limit); (4) commits with the user's identity (Shirk6, **no Claude trailer**);
+> 90MB** (GitHub limit); (4) commits with the user's identity (Cocoyawn <cocoyawn2035@gmail.com>, **no Claude trailer**);
 (5) pushes via the newest live VSCode credential socket.
 
 ## What's included vs excluded (.gitignore)
@@ -33,8 +33,8 @@ The script: (1) refreshes `claude_assets/{memory,skills}/` from the out-of-repo
 | `claude_assets/memory` + `claude_assets/skills` | `.claude/scheduler_state.json` |
 
 ## Critical constraints (why the script is shaped this way)
-- **NO Claude attribution** ([[no-claude-attribution]]): commits use `git config user.name`=Shirk6.
-  Never add a `Co-Authored-By: Claude` trailer here.
+- **NO Claude attribution** ([[no-claude-attribution]]): commits use `git config user.name`=Cocoyawn
+  <cocoyawn2035@gmail.com> (set globally). Never add a `Co-Authored-By: Claude` trailer here.
 - **Push auth is finicky**: the git `credential.helper` points at a VSCode IPC socket. The handle in
   the shell's env (`VSCODE_GIT_IPC_HANDLE`) is frequently a **stale/dead** socket → `ECONNREFUSED` /
   "Authentication failed". The script works around this by selecting the NEWEST `/tmp/vscode-git-*.sock`

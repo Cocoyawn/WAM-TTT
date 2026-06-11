@@ -1,6 +1,7 @@
 # Memory Index
 
 - [No Claude attribution](no-claude-attribution.md) — never add Claude/Anthropic co-author trailer to commits or PRs
+- [GitHub commit identity](github-commit-identity.md) — all commits use Cocoyawn <cocoyawn2035@gmail.com> (set globally)
 - [Prefer tmux over nohup](prefer-tmux-over-nohup.md) — background/long-running jobs go in a tmux session, not nohup
 - [Report in Beijing time](report-in-beijing-time.md) — server runs UTC; convert all reported clock times/ETAs to Beijing (UTC+8)
 - [Scheduler is resource entrypoint](scheduler-is-resource-entrypoint.md) — run new trainings/evals via scripts/scheduler.py queue (extend it, don't launch ad-hoc); see vlanext-scheduler skill

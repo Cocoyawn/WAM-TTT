@@ -2739,3 +2739,39 @@ Current task success rate: 1.0
 Current total success rate: 0.8034682080924855
 
   0%|          | 0/1 [00:00<?, ?it/s][A
+100%|██████████| 1/1 [03:17<00:00, 197.29s/it][A100%|██████████| 1/1 [03:17<00:00, 197.29s/it]
+ 85%|████████▌ | 174/204 [11:53:03<1:33:39, 187.31s/it]
+Task: pick up the black bowl from table center and place it on the plate light 17
+Starting episode 1...
+Saved rollout MP4 at path /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/ttt_chunk64_libero_spatial/libero_spatial_checkpoint_final_exec8_diff5_libero_plus_envgen_ttt64_shard1/episode=174--success=True--task=pick_up_the_black_bowl_from_table_center_and_place_it_on_the_plate_light_17.mp4
+Success: True
+# episodes completed so far: 174
+# successes: 140 (80.5%)
+--- Category Success Rates ---
+Background: 33/33 (100.0%)
+Robot: 34/43 (79.1%)
+Camera: 27/47 (57.4%)
+Noise: 39/44 (88.6%)
+Light: 7/7 (100.0%)
+Current task success rate: 1.0
+Current total success rate: 0.8045977011494253
+
+  0%|          | 0/1 [00:00<?, ?it/s][A
+100%|██████████| 1/1 [03:15<00:00, 195.10s/it][A100%|██████████| 1/1 [03:15<00:00, 195.10s/it]
+ 86%|████████▌ | 175/204 [11:56:21<1:32:03, 190.47s/it]
+Task: pick up the black bowl from table center and place it on the plate light 24
+Starting episode 1...
+Saved rollout MP4 at path /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/ttt_chunk64_libero_spatial/libero_spatial_checkpoint_final_exec8_diff5_libero_plus_envgen_ttt64_shard1/episode=175--success=True--task=pick_up_the_black_bowl_from_table_center_and_place_it_on_the_plate_light_24.mp4
+Success: True
+# episodes completed so far: 175
+# successes: 141 (80.6%)
+--- Category Success Rates ---
+Background: 33/33 (100.0%)
+Robot: 34/43 (79.1%)
+Camera: 27/47 (57.4%)
+Noise: 39/44 (88.6%)
+Light: 8/8 (100.0%)
+Current task success rate: 1.0
+Current total success rate: 0.8057142857142857
+
+  0%|          | 0/1 [00:00<?, ?it/s][A
