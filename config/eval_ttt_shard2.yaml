@@ -1,0 +1,20 @@
+data:
+  augmentation:
+    center_crop: true
+    center_crop_ratio: 0.9
+model:
+  diffusion_steps: 5
+  scheduler_type: "flow_match"
+  attn_implementation: "sdpa"
+eval:
+  finetuned_checkpoint: "/mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/ttt_libero_spatial/checkpoint_30000.pt"
+  task_suite_name: "libero_spatial"
+  task_ids: [6,7]
+  shard_tag: "shard2"
+  num_steps_wait: 10
+  num_steps_execute: 8
+  num_trials_per_task: 50
+  seed: 42
+  image_size: 256
+  resume_episodes: 0
+  resume_successes: 0

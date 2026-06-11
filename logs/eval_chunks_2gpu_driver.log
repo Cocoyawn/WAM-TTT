@@ -1,0 +1,29 @@
+[12:57] [chunk64] launching 2-shard base-spatial eval on GPU0/1
+[02:21] [chunk64] both shards done -> aggregating
+=== chunk64 LIBERO-spatial base per-task SR ===
+task0: 49/50 = 98%
+task1: 50/50 = 100%
+task2: 50/50 = 100%
+task3: 50/50 = 100%
+task4: 50/50 = 100%
+task5: 47/50 = 94%
+task6: 47/50 = 94%
+task7: 49/50 = 98%
+task8: 47/50 = 94%
+task9: 50/50 = 100%
+TOTAL: 489/500 = 97.80%
+[02:21] [chunk256] launching 2-shard base-spatial eval on GPU0/1
+[13:59] [chunk256] both shards done -> aggregating
+=== chunk256 LIBERO-spatial base per-task SR ===
+task0: 49/50 = 98%
+task1: 50/50 = 100%
+task2: 50/50 = 100%
+task3: 49/50 = 98%
+task4: 47/50 = 94%
+task5: 47/50 = 94%
+task6: 49/50 = 98%
+task7: 49/50 = 98%
+task8: 49/50 = 98%
+task9: 48/50 = 96%
+TOTAL: 487/500 = 97.40%
+[13:59] chunk base-eval all done

@@ -1,0 +1,22 @@
+[2026-06-10 17:12:56] scheduler start. queue: ttt64_envgen swa_ttt hp_object hp_goal hp_long
+[2026-06-10 17:12:57] LAUNCH eval ttt64_envgen: +8 worker(s) [running 0, pending 8, RAM 444GB, pool GPU[0, 1, 2, 3]]
+[2026-06-10 17:12:57]   EVAL-SHARD ttt64_envgen shard0 on GPU0 pid3098794
+[2026-06-10 17:13:37]   EVAL-SHARD ttt64_envgen shard1 on GPU1 pid3099896
+[2026-06-10 17:14:17]   EVAL-SHARD ttt64_envgen shard2 on GPU2 pid3100997
+[2026-06-10 17:14:57]   EVAL-SHARD ttt64_envgen shard3 on GPU3 pid3102090
+[2026-06-10 17:15:38]   EVAL-SHARD ttt64_envgen shard4 on GPU0 pid3103175
+[2026-06-10 17:16:18]   EVAL-SHARD ttt64_envgen shard5 on GPU1 pid3104367
+[2026-06-10 17:16:58]   EVAL-SHARD ttt64_envgen shard6 on GPU2 pid3105463
+[2026-06-10 17:17:38]   EVAL-SHARD ttt64_envgen shard7 on GPU3 pid3106604
+[2026-06-10 17:18:18] LAUNCH swa_ttt on GPU[0, 1, 2, 3] port29570 pid3107679 -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/logs/ablation_wm_swa_ttt.log
+[2026-06-10 18:19:05] STALL 60min: waiting=['hp_object', 'hp_goal', 'hp_long'] | GPUfree={0: 22553, 1: 22443, 2: 22461, 3: 22543} RAM=198GB(reserved 0) leased=[0, 1, 2, 3]
+[2026-06-10 19:20:02] STALL 60min: waiting=['hp_object', 'hp_goal', 'hp_long'] | GPUfree={0: 22479, 1: 22197, 2: 22217, 3: 22345} RAM=198GB(reserved 0) leased=[0, 1, 2, 3]
+[2026-06-10 20:20:50] STALL 60min: waiting=['hp_object', 'hp_goal', 'hp_long'] | GPUfree={0: 22479, 1: 22197, 2: 22217, 3: 22345} RAM=197GB(reserved 0) leased=[0, 1, 2, 3]
+[2026-06-10 21:21:39] STALL 60min: waiting=['hp_object', 'hp_goal', 'hp_long'] | GPUfree={0: 22479, 1: 22195, 2: 22217, 3: 22345} RAM=197GB(reserved 0) leased=[0, 1, 2, 3]
+[2026-06-10 22:22:27] STALL 60min: waiting=['hp_object', 'hp_goal', 'hp_long'] | GPUfree={0: 22479, 1: 22195, 2: 22217, 3: 22345} RAM=196GB(reserved 0) leased=[0, 1, 2, 3]
+[2026-06-10 23:23:13] STALL 60min: waiting=['hp_object', 'hp_goal', 'hp_long'] | GPUfree={0: 22479, 1: 22195, 2: 22217, 3: 22345} RAM=196GB(reserved 0) leased=[0, 1, 2, 3]
+[2026-06-11 00:23:59] STALL 60min: waiting=['hp_object', 'hp_goal', 'hp_long'] | GPUfree={0: 22479, 1: 22195, 2: 22217, 3: 22345} RAM=195GB(reserved 0) leased=[0, 1, 2, 3]
+[2026-06-11 01:24:44] STALL 60min: waiting=['hp_object', 'hp_goal', 'hp_long'] | GPUfree={0: 22479, 1: 22195, 2: 22217, 3: 22345} RAM=196GB(reserved 0) leased=[0, 1, 2, 3]
+[2026-06-11 02:25:30] STALL 60min: waiting=['hp_object', 'hp_goal', 'hp_long'] | GPUfree={0: 22479, 1: 22195, 2: 22217, 3: 22345} RAM=186GB(reserved 0) leased=[0, 1, 2, 3]
+[2026-06-11 03:26:17] STALL 60min: waiting=['hp_object', 'hp_goal', 'hp_long'] | GPUfree={0: 22479, 1: 22195, 2: 22217, 3: 22345} RAM=184GB(reserved 0) leased=[0, 1, 2, 3]
+[2026-06-11 04:27:05] STALL 60min: waiting=['hp_object', 'hp_goal', 'hp_long'] | GPUfree={0: 22479, 1: 22195, 2: 22217, 3: 22345} RAM=183GB(reserved 0) leased=[0, 1, 2, 3]

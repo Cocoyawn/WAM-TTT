@@ -1,0 +1,37 @@
+[run] ttt on GPU2
+[run] attn on GPU3
+[done] attn
+scripts/run_wm_quality_eval.sh: line 20: 2283194 Killed                  CUDA_VISIBLE_DEVICES=$gpu $VENV scripts/eval_wm_quality.py gen --ckpt "$ckpt" --tag "$tag" --device cuda:0 --limit "$GEN_LIMIT" --suites $SUITES > "logs/wm_${tag}_gen.log" 2>&1
+[summary] aggregating ...
+[summary] -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/wm_eval_cache/WM_QUALITY_SUMMARY.md
+# 世界模型视频生成质量：TTT-16 vs Attention（30k final）
+
+共享缓存 eval 集（两模型同一批输入）。loss=teacher-forced 图像 token 交叉熵（隔离自 action/dct 项）+ token top-1 acc；gen=free-running greedy AR → VQ decode → 像素，对比 GT 未来帧。
+
+Δ = TTT − Attn。loss_img 越低越好，其余越高越好（LPIPS 越低越好）。
+
+
+## Layer A — teacher-forced 图像 token loss / accuracy
+
+| suite | loss_img TTT | loss_img Attn | Δloss | tok-acc TTT | tok-acc Attn | Δacc |
+|---|---|---|---|---|---|---|
+| spatial (in-dist) | 2.0503 | 3.0999 | -1.0496 | 0.6752 | 0.4487 | +0.2265 |
+| object (OOD) | 13.4644 | 13.2616 | +0.2028 | 0.0002 | 0.0001 | +0.0001 |
+| goal (OOD) | 9.5275 | 9.6919 | -0.1643 | 0.1206 | 0.1021 | +0.0185 |
+
+## Layer B — free-running 生成像素质量
+
+| suite | PSNR TTT | PSNR Attn | ΔPSNR | SSIM TTT | SSIM Attn | ΔSSIM | LPIPS TTT | LPIPS Attn | ΔLPIPS |
+|---|---|---|---|---|---|---|---|---|---|
+| spatial (in-dist) | - | 20.19 | - | - | 0.7499 | - | - | 0.1845 | - |
+| object (OOD) | - | 13.97 | - | - | 0.4933 | - | - | 0.6003 | - |
+| goal (OOD) | - | 15.03 | - | - | 0.5888 | - | - | 0.5082 | - |
+
+## 判读
+
+- **loss_img 在 spatial 上 TTT 更低** → 训练 loss 优势确实落在视频项。
+- **OOD(object/goal) 上 Δ 保持/扩大** → 真泛化更好；**Δ 消失/反转** → 只是 in-dist 拟合更狠。
+- **PSNR/SSIM↑ 且 LPIPS↓** → 自回归生成的视频质量真的更好；**指标打平但 loss 低** → teacher-forcing 假象，低 loss 未转化为更好视频。
+- 对比图：`grids/{suite}_{tag}.png`（每行 GT | pred）。
+
+[all done] see VLANeXt_ablation_wm/wm_eval_cache/WM_QUALITY_SUMMARY.md

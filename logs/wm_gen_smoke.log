@@ -1,0 +1,17 @@
+/mnt/afs-h200/yuyangcheng/venvs/fla_triton32/lib/python3.10/site-packages/torch/utils/_pytree.py:185: FutureWarning: optree is installed but the version is too old to support PyTorch Dynamo in C++ pytree. C++ pytree support is disabled. Please consider upgrading optree using `python3 -m pip install --upgrade 'optree>=0.13.0'`.
+  warnings.warn(
+/mnt/afs-h200/yuyangcheng/venvs/fla_triton32/lib/python3.10/site-packages/torch/utils/_pytree.py:185: FutureWarning: optree is installed but the version is too old to support PyTorch Dynamo in C++ pytree. C++ pytree support is disabled. Please consider upgrading optree using `python3 -m pip install --upgrade 'optree>=0.13.0'`.
+  warnings.warn(
+W0607 03:17:19.263000 2203143 torch/_dynamo/convert_frame.py:906] [1/8] torch._dynamo hit config.cache_size_limit (8)
+W0607 03:17:19.263000 2203143 torch/_dynamo/convert_frame.py:906] [1/8]    function: 'causal_block_fast_weight_swish_glu' (/mnt/afs-h200/yuyangcheng/workplace/VLANeXt/src/models/ttt.py:230)
+W0607 03:17:19.263000 2203143 torch/_dynamo/convert_frame.py:906] [1/8]    last reason: 1/0: tensor 'L['k']' size mismatch at index 1. expected 1, actual 9
+W0607 03:17:19.263000 2203143 torch/_dynamo/convert_frame.py:906] [1/8] To log all recompilation reasons, use TORCH_LOGS="recompiles".
+W0607 03:17:19.263000 2203143 torch/_dynamo/convert_frame.py:906] [1/8] To diagnose recompilation issues, see https://pytorch.org/docs/main/torch.compiler_troubleshooting.html.
+[load] VLANeXt_ablation_wm/ttt_libero_spatial/checkpoint_final.pt
+[load] generator_mixer_type=ttt chunk_size=16 step=30000
+Initializing VLM /mnt/afs-h200/yuyangcheng/models/Qwen3-VL-2B-Instruct with attn_implementation: sdpa
+Initializing Future Image Generator Components...
+[gen] LPIPS unavailable, skipping (ModuleNotFoundError)
+[gen] grid -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/wm_eval_cache/grids/libero_spatial_no_noops_ttt_smoke.png
+[gen] ttt_smoke libero_spatial_no_noops: n=2 psnr=21.84 ssim=0.7922
+[done] -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/wm_eval_cache/result_gen_ttt_smoke.json

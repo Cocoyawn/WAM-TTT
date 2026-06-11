@@ -1,0 +1,9 @@
+launch shard5 on GPU0 -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/logs/plus_envgen_attn_shard5.log
+launch shard6 on GPU1 -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/logs/plus_envgen_attn_shard6.log
+launch shard7 on GPU2 -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/logs/plus_envgen_attn_shard7.log
+launch shard8 on GPU3 -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/logs/plus_envgen_attn_shard8.log
+launch shard9 on GPU0 -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/logs/plus_envgen_attn_shard9.log
+launch shard10 on GPU1 -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/logs/plus_envgen_attn_shard10.log
+launch shard11 on GPU2 -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/logs/plus_envgen_attn_shard11.log
+launch shard12 on GPU3 -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/logs/plus_envgen_attn_shard12.log
+all 8 catch-up workers launched

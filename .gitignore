@@ -1,0 +1,38 @@
+# ===== 数据 / 模型产物 (绝不入库, 合计 ~395G) =====
+VLANeXt_ablation_wm/
+VLANeXt_final_libero/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# ===== 第三方仓库 (各自有上游 git; LIBERO-plus HEAD 4976dc3) =====
+third_party/
+
+# ===== 实验日志 / 运行记录 =====
+wandb/
+.claude/scheduler_state.json
+.scheduler_stop
+
+# ===== 演示视频 (体积大, 可重生成); 保留 docs 下的 png 结果图 =====
+docs/static/
+*.mp4
+*.avi
+
+# ===== Python / 系统杂项 =====
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+*.egg-info/
+.ipynb_checkpoints/
+
+# ===== 大数据格式 (防止误入库) =====
+*.hdf5
+*.h5
+*.npz
+*.npy
+*.tfrecord
+*.zip
+*.tar
+*.tar.gz

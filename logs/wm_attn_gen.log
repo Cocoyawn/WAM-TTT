@@ -1,0 +1,28 @@
+/mnt/afs-h200/yuyangcheng/venvs/fla_triton32/lib/python3.10/site-packages/torch/utils/_pytree.py:185: FutureWarning: optree is installed but the version is too old to support PyTorch Dynamo in C++ pytree. C++ pytree support is disabled. Please consider upgrading optree using `python3 -m pip install --upgrade 'optree>=0.13.0'`.
+  warnings.warn(
+/mnt/afs-h200/yuyangcheng/venvs/fla_triton32/lib/python3.10/site-packages/torch/utils/_pytree.py:185: FutureWarning: optree is installed but the version is too old to support PyTorch Dynamo in C++ pytree. C++ pytree support is disabled. Please consider upgrading optree using `python3 -m pip install --upgrade 'optree>=0.13.0'`.
+  warnings.warn(
+/mnt/afs-h200/yuyangcheng/venvs/fla_triton32/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/mnt/afs-h200/yuyangcheng/venvs/fla_triton32/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=AlexNet_Weights.IMAGENET1K_V1`. You can also use `weights=AlexNet_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+[load] VLANeXt_ablation_wm/attention_libero_spatial/checkpoint_final.pt
+[load] generator_mixer_type=attention chunk_size=16 step=30000
+Initializing VLM /mnt/afs-h200/yuyangcheng/models/Qwen3-VL-2B-Instruct with attn_implementation: sdpa
+Initializing Future Image Generator Components...
+Setting up [LPIPS] perceptual loss: trunk [alex], v[0.1], spatial [off]
+Loading model from: /mnt/afs-h200/yuyangcheng/venvs/fla_triton32/lib/python3.10/site-packages/lpips/weights/v0.1/alex.pth
+[gen] LPIPS available (alex)
+[gen] grid -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/wm_eval_cache/grids/libero_spatial_no_noops_attn.png
+[gen] attn libero_spatial_no_noops: n=32 psnr=20.19 ssim=0.7499 lpips=0.1845
+Setting up [LPIPS] perceptual loss: trunk [alex], v[0.1], spatial [off]
+Loading model from: /mnt/afs-h200/yuyangcheng/venvs/fla_triton32/lib/python3.10/site-packages/lpips/weights/v0.1/alex.pth
+[gen] LPIPS available (alex)
+[gen] grid -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/wm_eval_cache/grids/libero_object_no_noops_attn.png
+[gen] attn libero_object_no_noops: n=32 psnr=13.97 ssim=0.4933 lpips=0.6003
+Setting up [LPIPS] perceptual loss: trunk [alex], v[0.1], spatial [off]
+Loading model from: /mnt/afs-h200/yuyangcheng/venvs/fla_triton32/lib/python3.10/site-packages/lpips/weights/v0.1/alex.pth
+[gen] LPIPS available (alex)
+[gen] grid -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/wm_eval_cache/grids/libero_goal_no_noops_attn.png
+[gen] attn libero_goal_no_noops: n=32 psnr=15.03 ssim=0.5888 lpips=0.5082
+[done] -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/wm_eval_cache/result_gen_attn.json

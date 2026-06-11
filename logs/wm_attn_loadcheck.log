@@ -1,0 +1,10 @@
+/mnt/afs-h200/yuyangcheng/venvs/fla_triton32/lib/python3.10/site-packages/torch/utils/_pytree.py:185: FutureWarning: optree is installed but the version is too old to support PyTorch Dynamo in C++ pytree. C++ pytree support is disabled. Please consider upgrading optree using `python3 -m pip install --upgrade 'optree>=0.13.0'`.
+  warnings.warn(
+/mnt/afs-h200/yuyangcheng/venvs/fla_triton32/lib/python3.10/site-packages/torch/utils/_pytree.py:185: FutureWarning: optree is installed but the version is too old to support PyTorch Dynamo in C++ pytree. C++ pytree support is disabled. Please consider upgrading optree using `python3 -m pip install --upgrade 'optree>=0.13.0'`.
+  warnings.warn(
+[load] VLANeXt_ablation_wm/attention_libero_spatial/checkpoint_final.pt
+[load] generator_mixer_type=attention chunk_size=16 step=30000
+Initializing VLM /mnt/afs-h200/yuyangcheng/models/Qwen3-VL-2B-Instruct with attn_implementation: sdpa
+Initializing Future Image Generator Components...
+[loss] attn_check libero_spatial_no_noops: n=4 loss_img=3.0495±0.1268 token_acc=0.4590
+[done] -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/wm_eval_cache/result_loss_attn_check.json

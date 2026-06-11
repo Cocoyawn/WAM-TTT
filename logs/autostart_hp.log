@@ -1,0 +1,2 @@
+[autostart] watching resources for HP trainings: object goal long
+[autostart] launching object on GPU2,3 (RAM 105GB free) -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/logs/ablation_wm_ttt_chunk256_libero_object.log

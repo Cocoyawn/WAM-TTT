@@ -1,0 +1,9 @@
+launch ttt256 shard0 on GPU2 -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/logs/plus_envgen_ttt256_shard0.log
+launch ttt256 shard1 on GPU3 -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/logs/plus_envgen_ttt256_shard1.log
+launch ttt256 shard2 on GPU2 -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/logs/plus_envgen_ttt256_shard2.log
+launch ttt256 shard3 on GPU3 -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/logs/plus_envgen_ttt256_shard3.log
+launch ttt256 shard4 on GPU2 -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/logs/plus_envgen_ttt256_shard4.log
+launch ttt256 shard5 on GPU3 -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/logs/plus_envgen_ttt256_shard5.log
+launch ttt256 shard6 on GPU0 -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/logs/plus_envgen_ttt256_shard6.log
+launch ttt256 shard7 on GPU1 -> /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/logs/plus_envgen_ttt256_shard7.log
+all 8 ttt256 catch-up workers launched

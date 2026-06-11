@@ -1,0 +1,19 @@
+data:
+  augmentation:
+    center_crop: true
+    center_crop_ratio: 0.9
+
+model:
+  diffusion_steps: 5
+  scheduler_type: "flow_match"
+
+eval:
+  finetuned_checkpoint: "/mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_final_libero/spatial/checkpoint_final.pt"
+  task_suite_name: "libero_spatial"
+  num_steps_wait: 10
+  num_steps_execute: 8
+  num_trials_per_task: 50
+  seed: 231
+  image_size: 256
+  resume_episodes: 0
+  resume_successes: 0
