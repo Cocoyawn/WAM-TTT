@@ -2686,3 +2686,21 @@ Current task success rate: 1.0
 Current total success rate: 0.788235294117647
 
   0%|          | 0/1 [00:00<?, ?it/s][A
+100%|██████████| 1/1 [02:37<00:00, 157.79s/it][A100%|██████████| 1/1 [02:37<00:00, 157.79s/it]
+ 84%|████████▍ | 171/203 [11:45:29<1:45:22, 197.58s/it]
+Task: pick up the black bowl between the plate and the ramekin and place it on the plate light 4
+Starting episode 1...
+Saved rollout MP4 at path /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/ttt_chunk64_libero_spatial/libero_spatial_checkpoint_final_exec8_diff5_libero_plus_envgen_ttt64_shard3/episode=171--success=True--task=pick_up_the_black_bowl_between_the_plate_and_the_ramekin_and_place_it_on_the_plate_light_4.mp4
+Success: True
+# episodes completed so far: 171
+# successes: 135 (78.9%)
+--- Category Success Rates ---
+Background: 32/32 (100.0%)
+Robot: 36/44 (81.8%)
+Camera: 23/47 (48.9%)
+Noise: 40/44 (90.9%)
+Light: 4/4 (100.0%)
+Current task success rate: 1.0
+Current total success rate: 0.7894736842105263
+
+  0%|          | 0/1 [00:00<?, ?it/s][A
