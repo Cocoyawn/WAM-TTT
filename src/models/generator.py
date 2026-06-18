@@ -47,7 +47,8 @@ def build_swa_causal_mask(T_img, T_ctx, window_size, device, dtype):
 
 class MoEGeneratorBlock(nn.Module):
     def __init__(self, hidden_size, vlm_hidden_size, num_heads, mlp_ratio=4.0,
-                 mixer_type="attention", ttt_chunk_size=16, layer_idx=0, swa_window_size=64):
+                 mixer_type="attention", ttt_chunk_size=16, layer_idx=0, swa_window_size=64,
+                 ttt_use_cuda_kernel=False):
         super().__init__()
         self.mixer_type = mixer_type
         self.swa_window_size = swa_window_size
@@ -62,6 +63,7 @@ class MoEGeneratorBlock(nn.Module):
                 dim=hidden_size, head_dim=hidden_size // num_heads,
                 causal=True, chunk_size=ttt_chunk_size,
                 vlm_hidden_size=hidden_size,  # ctx already projected to hidden_size
+                use_cuda_kernel=ttt_use_cuda_kernel,
             )
         elif mixer_type in ("gla", "gdn"):
             # Method-B causal linear-attention mixer: VLM ctx prepended so every
@@ -109,7 +111,8 @@ class ImageGeneratorTransformer(nn.Module):
     Autoregressive Transformer for Image Generation using MoE-like Layer-wise Cross Attention
     """
     def __init__(self, vocab_size, vlm_hidden_size, hidden_size=768, depth=12, num_heads=12, mlp_ratio=4.0, max_seq_len=1024,
-                 mixer_type="attention", mix_every_n=4, ttt_chunk_size=16, fallback_mixer="attention", swa_window_size=64):
+                 mixer_type="attention", mix_every_n=4, ttt_chunk_size=16, fallback_mixer="attention", swa_window_size=64,
+                 ttt_use_cuda_kernel=False):
         super().__init__()
         self.token_emb = nn.Embedding(vocab_size, hidden_size)
         self.pos_embed = nn.Parameter(torch.zeros(1, max_seq_len, hidden_size))
@@ -117,7 +120,8 @@ class ImageGeneratorTransformer(nn.Module):
         self.blocks = nn.ModuleList([
             MoEGeneratorBlock(hidden_size, vlm_hidden_size, num_heads, mlp_ratio=mlp_ratio,
                               mixer_type=_mixer_at(i, mixer_type, mix_every_n, fallback_mixer),
-                              ttt_chunk_size=ttt_chunk_size, layer_idx=i, swa_window_size=swa_window_size)
+                              ttt_chunk_size=ttt_chunk_size, layer_idx=i, swa_window_size=swa_window_size,
+                              ttt_use_cuda_kernel=ttt_use_cuda_kernel)
             for i in range(depth)
         ])
 

@@ -83,6 +83,7 @@ class VLANeXt(nn.Module):
         generator_ttt_chunk_size=16,
         generator_fallback_mixer="attention",
         generator_swa_window_size=64,
+        generator_ttt_use_cuda_kernel=False,
         attn_implementation="flash_attention_2",
         dct_loss_weight=0.1,
         dct_low_freq_weight=1.0,
@@ -212,6 +213,7 @@ class VLANeXt(nn.Module):
                 ttt_chunk_size=generator_ttt_chunk_size,
                 fallback_mixer=generator_fallback_mixer,
                 swa_window_size=generator_swa_window_size,
+                ttt_use_cuda_kernel=generator_ttt_use_cuda_kernel,
             )
         else:
             self.vq_model = None

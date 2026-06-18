@@ -53,6 +53,17 @@ def set_vision_chunk(model, cs):
     return n
 
 
+def set_vision_cuda(model, flag):
+    """Toggle the CUDA kernel on every causal TTT layer (in place; weights identical)."""
+    n = 0
+    for m in model.generator.modules():
+        if isinstance(m, FastWeightGluMLPMultihead) and m.causal:
+            # only meaningful for muon_update_steps==0 (the CUDA parity path)
+            m.use_cuda_kernel = bool(flag) and m.muon_update_steps == 0
+            n += 1
+    return n
+
+
 def make_inputs(model, B=1):
     proc = model.processor
     img = Image.new("RGB", (256, 256), "red")
@@ -91,13 +102,18 @@ if __name__ == "__main__":
     print(f"attention      |  baseline           | {attn_s*1000:8.1f} ms/call | 1.00x (ref)")
     del amodel; torch.cuda.empty_cache()
 
-    # --- TTT chunk-size sweep ---
+    # --- TTT chunk-size sweep: torch op vs CUDA kernel ---
     model = build(mixer="ttt")
     fwd, proprio = make_inputs(model, B=1)
-    for cs in CHUNKS:
-        nlayers = set_vision_chunk(model, cs)
-        s = timed(lambda: model.predict_action(proprioception=proprio, **fwd))
-        upd = sum((t + cs - 1)//cs for t in range(1, 257))
-        print(f"ttt chunk={cs:4d} | {nlayers} vision-TTT layers | {s*1000:8.1f} ms/call "
-              f"| {attn_s/s:4.2f}x vs attention | ~{upd} fw-updates/AR-rollout")
+    print()
+    for use_cuda in (False, True):
+        nl = set_vision_cuda(model, use_cuda)
+        tag = "CUDA-TTT " if use_cuda else "torch-TTT"
+        for cs in CHUNKS:
+            nlayers = set_vision_chunk(model, cs)
+            s = timed(lambda: model.predict_action(proprioception=proprio, **fwd))
+            upd = sum((t + cs - 1)//cs for t in range(1, 257))
+            print(f"{tag} chunk={cs:4d} | {nlayers} vision-TTT layers | {s*1000:8.1f} ms/call "
+                  f"| {attn_s/s:4.2f}x vs attention | ~{upd} fw-updates/AR-rollout")
+        print()
     del model; torch.cuda.empty_cache()

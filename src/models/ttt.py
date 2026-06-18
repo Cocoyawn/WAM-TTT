@@ -461,6 +461,7 @@ class FastWeightGluMLPMultihead(nn.Module):
         causal: bool = False,
         chunk_size: int = 64,
         vlm_hidden_size: int = None,
+        use_cuda_kernel: bool = False,
     ):
         """
         Args:
@@ -492,6 +493,9 @@ class FastWeightGluMLPMultihead(nn.Module):
         self.chunk_size = chunk_size
         self.vlm_hidden_size = vlm_hidden_size
         self.inject_ctx = vlm_hidden_size is not None
+        # CUDA-accelerated causal forward (muon_update_steps==0 only). Falls back
+        # to the torch op if the extension is unavailable or muon>0.
+        self.use_cuda_kernel = use_cuda_kernel and causal and muon_update_steps == 0
 
         d_in = d_out = head_dim
         d_h = int(head_dim * inter_multi)
@@ -606,13 +610,25 @@ class FastWeightGluMLPMultihead(nn.Module):
             if self.causal:
                 # Shifted block-causal (vision expert). Context, if any, is a
                 # global non-causal pre-update so image->context is fully visible.
-                output, w0, w1, w2 = causal_block_fast_weight_swish_glu(
-                    w0, w1, w2, q, k, v, lr0, lr1, lr2,
-                    chunk_size=self.chunk_size,
-                    muon_update_steps=self.muon_update_steps,
-                    vlm_k=ctx_k, vlm_v=ctx_v,
-                    vlm_lr0=ctx_lr0, vlm_lr1=ctx_lr1, vlm_lr2=ctx_lr2,
-                )
+                if self.use_cuda_kernel:
+                    from .ttt_cuda import causal_ttt
+                    # causal_ttt routes to the CUDA forward when the extension is
+                    # built + inputs are CUDA, else to the torch reference; its
+                    # backward is exact (recompute) either way.
+                    output, w0, w1, w2 = causal_ttt(
+                        w0, w1, w2, q, k, v, lr0, lr1, lr2,
+                        chunk_size=self.chunk_size,
+                        vlm_k=ctx_k, vlm_v=ctx_v,
+                        vlm_lr0=ctx_lr0, vlm_lr1=ctx_lr1, vlm_lr2=ctx_lr2,
+                    )
+                else:
+                    output, w0, w1, w2 = causal_block_fast_weight_swish_glu(
+                        w0, w1, w2, q, k, v, lr0, lr1, lr2,
+                        chunk_size=self.chunk_size,
+                        muon_update_steps=self.muon_update_steps,
+                        vlm_k=ctx_k, vlm_v=ctx_v,
+                        vlm_lr0=ctx_lr0, vlm_lr1=ctx_lr1, vlm_lr2=ctx_lr2,
+                    )
             else:
                 # Bidirectional (action expert). Context tokens are appended to
                 # the update k/v sequence (apply queries stay expert-only),

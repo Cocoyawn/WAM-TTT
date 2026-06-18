@@ -20,7 +20,7 @@ B = 8          # real training batch (matches config batch_size=16 split; use 8 
 WARMUP, ITERS = 5, 20
 
 
-def build(mixer):
+def build(mixer, ttt_cuda=False):
     torch.manual_seed(0)
     return VLANeXt(
         lmm_path=QWEN, action_dim=7, num_actions=8, num_queries=16,
@@ -29,7 +29,8 @@ def build(mixer):
         policy_depth=29, policy_num_heads=16,
         policy_mixer_type=mixer, policy_mix_every_n=4,
         generator_depth=29, generator_num_heads=12,
-        generator_mixer_type=mixer, generator_mix_every_n=4, generator_ttt_chunk_size=16,
+        generator_mixer_type=mixer, generator_mix_every_n=4, generator_ttt_chunk_size=256,
+        generator_ttt_use_cuda_kernel=ttt_cuda,
         use_proprio_input_vlm=True, use_transformer_proprio_projector=False,
         backbone_mode="finetune", gradient_checkpointing=True,   # real training setting
         action_vqvae={"enabled": False}, attn_implementation="sdpa",
@@ -57,8 +58,8 @@ def make_batch(model):
     return fwd, actions, proprio, future
 
 
-def bench(mixer):
-    model = build(mixer)
+def bench(mixer, ttt_cuda=False):
+    model = build(mixer, ttt_cuda=ttt_cuda)
     model.train()
     fwd, actions, proprio, future = make_batch(model)
     future = future.to(DEV, DT)
@@ -89,6 +90,11 @@ def bench(mixer):
 if __name__ == "__main__":
     print(f"batch={B}, world_model=ON, gradient_checkpointing=ON, attn=sdpa, "
           f"compile={'OFF' if __import__('os').environ.get('TORCHDYNAMO_DISABLE')=='1' else 'ON'}")
-    for mixer in ["attention", "ttt"]:
-        dt, mem, loss = bench(mixer)
-        print(f"[{mixer:9s}] {dt*1000:8.1f} ms/step | {1/dt:5.2f} it/s | peak {mem:5.1f} GB | loss {loss:.3f}")
+    configs = [
+        ("attention", False, "attention"),
+        ("ttt",       False, "torch-TTT"),
+        ("ttt",       True,  "CUDA-TTT "),
+    ]
+    for mixer, ttt_cuda, label in configs:
+        dt, mem, loss = bench(mixer, ttt_cuda=ttt_cuda)
+        print(f"[{label:9s}] {dt*1000:8.1f} ms/step | {1/dt:5.2f} it/s | peak {mem:5.1f} GB | loss {loss:.3f}")
