@@ -102,6 +102,7 @@ def get_vla(cfg):
             generator_mixer_type=model_config.get('generator_mixer_type', 'attention'),
             generator_mix_every_n=model_config.get('generator_mix_every_n', 4),
             generator_ttt_chunk_size=model_config.get('generator_ttt_chunk_size', 16),
+            generator_ttt_use_cuda_kernel=model_config.get('generator_ttt_use_cuda_kernel', False),
             attn_implementation=attn_implementation,
             dct_loss_weight=model_config.get('dct_loss_weight', 0.1),
             dct_low_freq_weight=model_config.get('dct_low_freq_weight', 1.0),
@@ -121,7 +122,12 @@ def get_vla(cfg):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device, dtype=torch.bfloat16)
     model.eval()
-    
+
+    # O(n) incremental image-token decode in predict_action (replaces the
+    # O(n^2) AR full-recompute loop). Equivalent within bf16 round-off; see
+    # scripts/equiv_predict_action_b.py. Off by default -> original behavior.
+    model.use_incremental_gen = model_config.get('generator_use_incremental_gen', False)
+
     model.train_config = train_config
     
     return model

@@ -43,6 +43,12 @@ std::vector<torch::Tensor> silu_derivs(const torch::Tensor& x);   // returns {si
 torch::Tensor frobnorm_bwd(const torch::Tensor& gy, const torch::Tensor& x, double eps);
 torch::Tensor weightnorm_bwd(const torch::Tensor& gy, const torch::Tensor& w_pre,
                              const torch::Tensor& wn_target, double eps);
+torch::Tensor infer_step(const torch::Tensor& q, const torch::Tensor& w0,
+                         const torch::Tensor& w2, const torch::Tensor& w1,
+                         const torch::Tensor& o_norm_weight, double eps);
+torch::Tensor infer_step_mid(const torch::Tensor& q, const torch::Tensor& w0,
+                             const torch::Tensor& w2, const torch::Tensor& w1,
+                             const torch::Tensor& o_norm_weight, double eps, double qeps);
 
 }  // namespace ttt_cuda
 
@@ -81,6 +87,44 @@ static void fw_update(
     w1 = ttt_cuda::frob_norm_update(w1, w1_grad, w1_norm, /*norm_dim=*/1);
     w0 = ttt_cuda::frob_norm_update(w0, w0_grad, w0_norm, /*norm_dim=*/1);
     w2 = ttt_cuda::frob_norm_update(w2, w2_grad, w2_norm, /*norm_dim=*/1);
+}
+
+// fw_update that ALSO returns the intermediates the backward needs, so chunk_vjp
+// can skip recomputing them (Phase 2). Returns, in order:
+//   {gate, up, dhidden, fn0_in, fn1_in, fn2_in, w0_pre, w1_pre, w2_pre}
+// where fn*_in are the raw (pre-Frobenius) grad outer products and w*_pre are the
+// post-(W+frobnorm) weights BEFORE the weight-norm rescale. w0/w1/w2 are updated
+// in place to the post-weight-norm new weights (same as fw_update).
+static std::array<torch::Tensor, 9> fw_update_save(
+    torch::Tensor& w0, torch::Tensor& w1, torch::Tensor& w2,
+    const torch::Tensor& ki, const torch::Tensor& vi,
+    const torch::Tensor& lr0i, const torch::Tensor& lr1i, const torch::Tensor& lr2i,
+    const torch::Tensor& w0_norm, const torch::Tensor& w1_norm, const torch::Tensor& w2_norm) {
+
+    auto gate = ki.bmm(w0);
+    auto up   = ki.bmm(w2);
+    auto hidden = ttt_cuda::silu_glu(gate, up);
+    auto dhidden = vi.bmm(w1.transpose(-1, -2));
+    auto chain = ttt_cuda::silu_bwd_glu(dhidden, gate, up);
+    auto dgate_before_act   = chain[0];
+    auto dhidden_before_mul = chain[1];
+
+    auto fn1_in = (hidden * lr1i).to(vi.dtype()).transpose(-1, -2).bmm(vi);
+    auto fn0_in = (ki * lr0i).to(dgate_before_act.dtype()).transpose(-1, -2).bmm(dgate_before_act);
+    auto fn2_in = (ki * lr2i).to(dhidden_before_mul.dtype()).transpose(-1, -2).bmm(dhidden_before_mul);
+    auto w1_grad = frob_normalize(fn1_in);
+    auto w0_grad = frob_normalize(fn0_in);
+    auto w2_grad = frob_normalize(fn2_in);
+
+    auto w0_pre = w0 + w0_grad;
+    auto w1_pre = w1 + w1_grad;
+    auto w2_pre = w2 + w2_grad;
+
+    w1 = ttt_cuda::frob_norm_update(w1, w1_grad, w1_norm, 1);
+    w0 = ttt_cuda::frob_norm_update(w0, w0_grad, w0_norm, 1);
+    w2 = ttt_cuda::frob_norm_update(w2, w2_grad, w2_norm, 1);
+
+    return {gate, up, dhidden, fn0_in, fn1_in, fn2_in, w0_pre, w1_pre, w2_pre};
 }
 
 // output_i = (silu(qi@w0) * (qi@w2)) @ w1
@@ -142,7 +186,58 @@ std::vector<torch::Tensor> causal_ttt_forward(
     return {output, w0, w1, w2};
 }
 
-// ===================== BACKWARD orchestration (Plan A) =====================
+// Forward that ALSO saves per-chunk entry weights (for the no-recompute
+// backward, Phase 1). Returns:
+//   [output, w0, w1, w2,           (final weights)
+//    entry_w0, entry_w1, entry_w2, (stacked [n_chunk, B, *, *] entry-of-chunk)
+//    pre_w0, pre_w1, pre_w2]       (weights entering the VLM pre-update == the
+//                                   original w*; saved explicitly for symmetry)
+std::vector<torch::Tensor> causal_ttt_forward_save(
+    torch::Tensor w0, torch::Tensor w1, torch::Tensor w2,
+    torch::Tensor q, torch::Tensor k, torch::Tensor v,
+    torch::Tensor lr0, torch::Tensor lr1, torch::Tensor lr2,
+    int64_t chunk_size,
+    c10::optional<torch::Tensor> vlm_k,
+    c10::optional<torch::Tensor> vlm_v,
+    c10::optional<torch::Tensor> vlm_lr0,
+    c10::optional<torch::Tensor> vlm_lr1,
+    c10::optional<torch::Tensor> vlm_lr2) {
+
+    TORCH_CHECK(q.is_cuda(), "causal_ttt_forward_save: inputs must be CUDA tensors");
+    auto w0_norm = w0.detach().norm(2, 1, true);
+    auto w1_norm = w1.detach().norm(2, 1, true);
+    auto w2_norm = w2.detach().norm(2, 1, true);
+
+    auto pre_w0 = w0, pre_w1 = w1, pre_w2 = w2;  // original weights (pre-update entry)
+    if (vlm_k.has_value()) {
+        fw_update(w0, w1, w2, vlm_k.value(), vlm_v.value(),
+                  vlm_lr0.value(), vlm_lr1.value(), vlm_lr2.value(),
+                  w0_norm, w1_norm, w2_norm);
+    }
+
+    const int64_t L = q.size(1);
+    using torch::indexing::Slice;
+    std::vector<torch::Tensor> outs, e0, e1, e2;
+    for (int64_t s = 0; s < L; s += chunk_size) {
+        int64_t e = std::min(s + chunk_size, L);
+        // record entry weights of this chunk BEFORE its update
+        e0.push_back(w0); e1.push_back(w1); e2.push_back(w2);
+        auto qi = q.index({Slice(), Slice(s, e), Slice()});
+        outs.push_back(fw_apply(qi, w0, w1, w2));
+        auto ki = k.index({Slice(), Slice(s, e), Slice()});
+        auto vi = v.index({Slice(), Slice(s, e), Slice()});
+        auto l0 = lr0.index({Slice(), Slice(s, e), Slice()});
+        auto l1 = lr1.index({Slice(), Slice(s, e), Slice()});
+        auto l2 = lr2.index({Slice(), Slice(s, e), Slice()});
+        fw_update(w0, w1, w2, ki, vi, l0, l1, l2, w0_norm, w1_norm, w2_norm);
+    }
+    auto output = torch::cat(outs, 1);
+    auto entry_w0 = torch::stack(e0, 0);  // [n_chunk, B, d, dh]
+    auto entry_w1 = torch::stack(e1, 0);
+    auto entry_w2 = torch::stack(e2, 0);
+    return {output, w0, w1, w2, entry_w0, entry_w1, entry_w2, pre_w0, pre_w1, pre_w2};
+}
+
 //
 // Mirrors the proven torch manual backward (ttt_manual_backward.py):
 // checkpoint-style BPTT. Forward pass recomputes + saves the ENTRY weights of
@@ -169,34 +264,50 @@ std::vector<torch::Tensor> causal_ttt_backward(
     c10::optional<torch::Tensor> vlm_v,
     c10::optional<torch::Tensor> vlm_lr0,
     c10::optional<torch::Tensor> vlm_lr1,
-    c10::optional<torch::Tensor> vlm_lr2) {
+    c10::optional<torch::Tensor> vlm_lr2,
+    // Phase 1: precomputed per-chunk entry weights [n_chunk,B,*,*] from
+    // causal_ttt_forward_save. When present, skip the forward-recompute loop.
+    c10::optional<torch::Tensor> entry_w0 = c10::nullopt,
+    c10::optional<torch::Tensor> entry_w1 = c10::nullopt,
+    c10::optional<torch::Tensor> entry_w2 = c10::nullopt) {
 
     TORCH_CHECK(q.is_cuda(), "causal_ttt_backward: inputs must be CUDA");
     const double FEPS = 1e-7, WEPS = 1e-5;
     auto w0n_t = w0.norm(2, 1, true), w1n_t = w1.norm(2, 1, true), w2n_t = w2.norm(2, 1, true);
     bool has_vlm = vlm_k.has_value();
+    bool have_entry = entry_w0.has_value();
 
     const int64_t L = q.size(1);
     std::vector<int64_t> starts;
     for (int64_t s = 0; s < L; s += chunk_size) starts.push_back(s);
 
-    // ---- forward pass: save ENTRY weights of each chunk (and post-vlm entry) ----
+    // ---- collect ENTRY weights of each chunk (and pre-vlm entry) ----
     std::vector<std::array<torch::Tensor, 3>> entry;  // weights entering each chunk
-    auto cw0 = w0, cw1 = w1, cw2 = w2;
-    std::array<torch::Tensor, 3> pre_entry = {w0, w1, w2};  // weights entering vlm pre-update
-    if (has_vlm) {
-        fw_update(cw0, cw1, cw2, vlm_k.value(), vlm_v.value(),
-                  vlm_lr0.value(), vlm_lr1.value(), vlm_lr2.value(), w0n_t, w1n_t, w2n_t);
-    }
-    for (size_t ci = 0; ci < starts.size(); ++ci) {
-        int64_t s = starts[ci], e = std::min(s + chunk_size, L);
-        entry.push_back({cw0, cw1, cw2});
-        auto ki = k.index({Slice(), Slice(s, e), Slice()});
-        auto vi = v.index({Slice(), Slice(s, e), Slice()});
-        auto l0 = lr0.index({Slice(), Slice(s, e), Slice()});
-        auto l1 = lr1.index({Slice(), Slice(s, e), Slice()});
-        auto l2 = lr2.index({Slice(), Slice(s, e), Slice()});
-        fw_update(cw0, cw1, cw2, ki, vi, l0, l1, l2, w0n_t, w1n_t, w2n_t);
+    std::array<torch::Tensor, 3> pre_entry = {w0, w1, w2};
+    if (have_entry) {
+        // Phase 1: use precomputed entry weights from forward_save -> NO recompute.
+        auto ew0 = entry_w0.value(), ew1 = entry_w1.value(), ew2 = entry_w2.value();
+        for (size_t ci = 0; ci < starts.size(); ++ci) {
+            entry.push_back({ew0.select(0, ci), ew1.select(0, ci), ew2.select(0, ci)});
+        }
+        // pre_entry stays the original w* (== weights entering the vlm pre-update)
+    } else {
+        // fallback: recompute the forward to collect entry weights (old path)
+        auto cw0 = w0, cw1 = w1, cw2 = w2;
+        if (has_vlm) {
+            fw_update(cw0, cw1, cw2, vlm_k.value(), vlm_v.value(),
+                      vlm_lr0.value(), vlm_lr1.value(), vlm_lr2.value(), w0n_t, w1n_t, w2n_t);
+        }
+        for (size_t ci = 0; ci < starts.size(); ++ci) {
+            int64_t s = starts[ci], e = std::min(s + chunk_size, L);
+            entry.push_back({cw0, cw1, cw2});
+            auto ki = k.index({Slice(), Slice(s, e), Slice()});
+            auto vi = v.index({Slice(), Slice(s, e), Slice()});
+            auto l0 = lr0.index({Slice(), Slice(s, e), Slice()});
+            auto l1 = lr1.index({Slice(), Slice(s, e), Slice()});
+            auto l2 = lr2.index({Slice(), Slice(s, e), Slice()});
+            fw_update(cw0, cw1, cw2, ki, vi, l0, l1, l2, w0n_t, w1n_t, w2n_t);
+        }
     }
 
     // ---- accumulators ----
@@ -358,10 +469,26 @@ std::vector<torch::Tensor> causal_ttt_backward(
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("causal_ttt_forward", &causal_ttt_forward,
           "Causal block fast-weight SwiGLU TTT forward (CUDA)");
+    m.def("causal_ttt_forward_save", &causal_ttt_forward_save,
+          "Forward that also saves per-chunk entry weights (Phase 1 no-recompute backward)");
     m.def("causal_ttt_backward", &causal_ttt_backward,
-          "Causal block fast-weight SwiGLU TTT backward (CUDA, Plan A)");
+          "Causal block fast-weight SwiGLU TTT backward (CUDA, Plan A)",
+          py::arg("w0"), py::arg("w1"), py::arg("w2"),
+          py::arg("q"), py::arg("k"), py::arg("v"),
+          py::arg("lr0"), py::arg("lr1"), py::arg("lr2"),
+          py::arg("chunk_size"),
+          py::arg("g_out"), py::arg("g_w0n"), py::arg("g_w1n"), py::arg("g_w2n"),
+          py::arg("vlm_k"), py::arg("vlm_v"),
+          py::arg("vlm_lr0"), py::arg("vlm_lr1"), py::arg("vlm_lr2"),
+          py::arg("entry_w0") = c10::nullopt,
+          py::arg("entry_w1") = c10::nullopt,
+          py::arg("entry_w2") = c10::nullopt);
     // expose backward primitives for unit testing
     m.def("silu_derivs", &ttt_cuda::silu_derivs, "silu' and silu''");
     m.def("frobnorm_bwd", &ttt_cuda::frobnorm_bwd, "Frobenius-normalize vjp");
     m.def("weightnorm_bwd", &ttt_cuda::weightnorm_bwd, "weight-norm (per-col) vjp");
+    m.def("infer_step", &ttt_cuda::infer_step,
+          "Fused single-token TTT inference apply + RMSNorm (CUDA)");
+    m.def("infer_step_mid", &ttt_cuda::infer_step_mid,
+          "Stage-1 mega: fused q-norm + apply + RMSNorm (CUDA)");
 }

@@ -15,6 +15,7 @@ experiments is present.
 |---|---|---|
 | Mixer ablation | TTT / GDN / SWA / SWA+GDN / SWA+TTT in the generator DiT | `src/models/{ttt,linear_attn_mixer,generator}.py` |
 | Block-causal TTT | `chunk_size` sets TTT block granularity (16 blocks → 1 block/frame) | `generator_ttt_chunk_size` |
+| CUDA TTT operator | Fused causal forward/backward + O(n) incremental decode; bf16-equivalent to torch | `src/models/ttt_cuda/` |
 | Job scheduler | Fault-tolerant GPU/RAM orchestrator for all trainings and evals | `scripts/scheduler.py` |
 | Env-gen eval | Sharded LIBERO-plus generalization eval (1627 tasks, 5 dimensions) | `scripts/libero_plus_bench_eval.py` |
 | Severity analysis | Re-aggregation by `difficulty_level` 1–5 → robustness curves | `scripts/{aggregate_envgen,plot_severity_curves}.py` |
@@ -124,6 +125,68 @@ data:
 
 See [DESIGN_SPACE.md](DESIGN_SPACE.md), [TTT_ARCHITECTURE.md](TTT_ARCHITECTURE.md), and
 [COMMON_ISSUES.md](COMMON_ISSUES.md) for details.
+
+## CUDA TTT operator (training + O(n) inference)
+
+The TTT mixer ships a custom CUDA/C++ operator (`src/models/ttt_cuda/`) that fuses the
+kernel-launch storm of the eager-torch path and adds an **incremental O(n) decode** for the
+generator's autoregressive image rollout. It is **numerically equivalent to the torch reference
+within bf16 round-off** — verified on the real TTT-256 checkpoint (`scripts/equiv_predict_action_b.py`:
+incremental-vs-bf16 error ≤ the bf16-vs-fp32 floor on the hidden states that feed the action head).
+
+### Build
+
+No pre-build step. The extension is **JIT-compiled on first import** via
+`torch.utils.cpp_extension.load`, keyed to the actual device capability (A800 = `sm_80`; do not assume
+`sm_90` from the `afs-h200` path). Requires a CUDA toolchain (`nvcc`) matching the torch CUDA version.
+
+```bash
+# Trigger the build once (compiles to ~/.cache/torch_extensions/.../ttt_fused_cuda);
+# HAVE_CUDA_TTT becomes True. Subsequent imports are instant.
+TORCHDYNAMO_DISABLE=1 PYTHONPATH=$PWD python -c \
+  "from src.models.ttt_cuda import _load_extension; print('built:', _load_extension() is not None)"
+
+TTT_CUDA_VERBOSE=1 ...        # echo the nvcc compile lines
+TORCH_CUDA_ARCH_LIST=8.0 ...  # override the target arch (else auto-detected)
+```
+
+If the toolchain or CUDA is unavailable the build fails **soft**: `HAVE_CUDA_TTT=False`, a warning is
+emitted, and every call routes to the pure-torch op — results are unchanged, only slower. A killed
+build can leave a stale `lock` in the extension cache dir; delete it before re-importing.
+
+### Switching the operator
+
+Two independent switches, both **default off → byte-identical to the original torch path** (zero eval
+regression). Set them in a config's `model:` block:
+
+```yaml
+model:
+  generator_mixer_type: "ttt"
+  generator_ttt_use_cuda_kernel: true     # fused CUDA causal forward + backward (train & infer)
+  generator_use_incremental_gen: true     # O(n) incremental image-token decode in predict_action
+```
+
+- `generator_ttt_use_cuda_kernel` swaps `causal_block_fast_weight_swish_glu` for the CUDA op
+  (`causal_ttt`, forward + exact backward); falls back to torch when `muon_update_steps > 0` or the
+  build is unavailable.
+- `generator_use_incremental_gen` makes `predict_action` decode the 256 image tokens with
+  `ImageGeneratorTransformer.generate_incremental` (TTT layers reuse the VLM-pre-updated fast weights
+  per `infer_step`; attention layers use a KV-cache) instead of re-running the full generator on the
+  growing prefix at every step. Both switches compose.
+
+In code the same toggles are `generator_ttt_use_cuda_kernel=...` on the `VLANeXt`/`ImageGeneratorTransformer`
+constructor and `model.use_incremental_gen = True` on an instance.
+
+### Verify / benchmark
+
+```bash
+# correctness: incremental == full-recompute on the real checkpoint (run on a CLEAN GPU)
+TORCHDYNAMO_DISABLE=1 PYTHONPATH=$PWD CUDA_VISIBLE_DEVICES=<clean> \
+  python -m scripts.equiv_predict_action_b
+# latency: O(n^2) full-recompute vs O(n) incremental (torch & CUDA)
+TORCHDYNAMO_DISABLE=1 PYTHONPATH=$PWD CUDA_VISIBLE_DEVICES=<clean> \
+  python -m scripts.bench_ttt_incremental_infer
+```
 
 ## Key Results
 

@@ -227,6 +227,43 @@ def fast_weight_swish_glu_weight_norm_mini_batch_apply(
     return output, w0, w1, w2
 
 
+def _vlm_preupdate(w0, w1, w2, vlm_k, vlm_v, vlm_lr0, vlm_lr1, vlm_lr2):
+    """The global (non-causal) VLM pre-update, muon_update_steps=0.
+
+    Extracted from causal_block_fast_weight_swish_glu's vlm_k branch so the
+    incremental inference path can build the cached fast weights identically.
+    Returns the post-pre-update (w0, w1, w2).
+    """
+    w0_norm = w0.detach().norm(dim=1, keepdim=True)
+    w1_norm = w1.detach().norm(dim=1, keepdim=True)
+    w2_norm = w2.detach().norm(dim=1, keepdim=True)
+
+    gate_before_act = vlm_k @ w0
+    hidden_before_mul = vlm_k @ w2
+    hidden = F.silu(gate_before_act, inplace=False) * hidden_before_mul
+
+    dhidden = vlm_v @ w1.transpose(-1, -2)
+    dhidden_before_mul = dhidden * F.silu(gate_before_act, inplace=False)
+    dgate = dhidden * hidden_before_mul
+    dgate_before_act = silu_backprop(dgate, gate_before_act)
+
+    w1_grad = zeropower_via_newtonschulz5(
+        (hidden * vlm_lr1).to(vlm_v.dtype).transpose(-1, -2) @ vlm_v, 0)
+    w0_grad = zeropower_via_newtonschulz5(
+        (vlm_k * vlm_lr0).to(dgate_before_act.dtype).transpose(-1, -2) @ dgate_before_act, 0)
+    w2_grad = zeropower_via_newtonschulz5(
+        (vlm_k * vlm_lr2).to(dhidden_before_mul.dtype).transpose(-1, -2) @ dhidden_before_mul, 0)
+
+    w0 = w0 + w0_grad
+    w1 = w1 + w1_grad
+    w2 = w2 + w2_grad
+
+    w0 = w0 / (w0.norm(dim=1, keepdim=True) + 1e-5) * w0_norm
+    w1 = w1 / (w1.norm(dim=1, keepdim=True) + 1e-5) * w1_norm
+    w2 = w2 / (w2.norm(dim=1, keepdim=True) + 1e-5) * w2_norm
+    return w0, w1, w2
+
+
 @torch.compile(dynamic=True)
 def causal_block_fast_weight_swish_glu(
     w0: torch.Tensor,  # [b, d, dh]
@@ -669,6 +706,156 @@ class FastWeightGluMLPMultihead(nn.Module):
 
         output = self.c_proj(output)
         return output, {"w0": w0, "w1": w1, "w2": w2}
+
+    @torch.no_grad()
+    def infer_build_state(self, ctx: torch.Tensor):
+        """Inference (causal, chunk>=seq) state = the VLM-pre-updated fast weights.
+
+        At chunk_size >= seq_len the causal op is a SINGLE chunk: apply uses only
+        the weights produced by the VLM global pre-update (image tokens never
+        update before they are applied). So every image position is independent
+        and depends only on (q_j, w_vlm). We precompute w_vlm ONCE per layer and
+        reuse it for all autoregressive steps -> O(1) TTT work per step.
+
+        ctx: (b, t_ctx, d) context already projected to mixer dim (== forward's ctx).
+        Returns a state dict {w0,w1,w2} (the post-pre-update fast weights).
+        """
+        assert self.causal and self.inject_ctx, "incremental path is for causal method-B"
+        B = ctx.shape[0]
+        w0 = self.w0.repeat(B, 1, 1)
+        w1 = self.w1.repeat(B, 1, 1)
+        w2 = self.w2.repeat(B, 1, 1)
+        # build ctx k/v/lr exactly as forward() does
+        ctx_kv = F.silu(ctx, inplace=False)
+        ctx_k = rearrange(ctx_kv, "b t (h d) -> (b h) t d", h=self.num_heads)
+        ctx_v = ctx_k
+        ctx_k = ctx_k / (ctx_k.norm(dim=2, keepdim=True) + 1e-5).to(ctx.dtype)
+        ctx_lr = self.ctx_lr_fc(ctx)
+        ctx_lr = torch.nn.functional.softplus(ctx_lr.float() + self.base_lr_inv)
+        ctx_lr0, ctx_lr1, ctx_lr2 = rearrange(
+            ctx_lr, "b t (lrs h d) -> lrs (b h) t d", lrs=3, h=self.num_heads)
+        # one global (non-causal) pre-update == the vlm_k branch of the causal op
+        w0, w1, w2 = _vlm_preupdate(w0, w1, w2, ctx_k, ctx_v, ctx_lr0, ctx_lr1, ctx_lr2)
+        return {"w0": w0, "w1": w1, "w2": w2}
+
+    @torch.no_grad()
+    def infer_step(self, x_new: torch.Tensor, state: dict):
+        """Apply cached fast weights to the NEW token(s) only. O(1) in seq len.
+
+        x_new: (b, n_new, d) -- typically n_new == 1 (the latest token).
+        state: from infer_build_state. Returns output (b, n_new, d).
+        Numerically identical to forward()'s apply for those positions.
+        """
+        # CUDA-Graph fast path: capture the whole single-token step once, then
+        # replay -> eliminates per-call python dispatch + launch overhead.
+        if (self.use_cuda_kernel and x_new.shape[1] == 1 and not self.use_gate_fn
+                and x_new.is_cuda and getattr(self, "_use_infer_graph", True)):
+            out = self._infer_step_graphed(x_new, state)
+            if out is not None:
+                return out
+        return self._infer_step_eager(x_new, state)
+
+    @torch.no_grad()
+    def _infer_step_graphed(self, x_new, state):
+        """CUDA-graph-captured single token step. Returns None if capture is not
+        possible (falls back to eager). Keyed by (state tensors identity, dtype)."""
+        from .ttt_cuda import _load_extension
+        ext = _load_extension()
+        if ext is None or not hasattr(ext, "infer_step_mid"):
+            return None
+        key = (state["w0"].data_ptr(), x_new.dtype, x_new.shape[0])
+        cache = getattr(self, "_graph_cache", None)
+        if cache is None:
+            cache = self._graph_cache = {}
+        g = cache.get(key)
+        if g is None:
+            g = self._build_infer_graph(x_new, state, ext)
+            if g is None:
+                self._use_infer_graph = False  # capture failed once -> stop trying
+                return None
+            cache[key] = g
+        g["static_in"].copy_(x_new)
+        g["graph"].replay()
+        # clone: static_out is reused every replay; callers that collect outputs
+        # across steps would otherwise all alias the same buffer.
+        return g["static_out"].clone()
+
+    @torch.no_grad()
+    def _build_infer_graph(self, x_new, state, ext):
+        try:
+            static_in = x_new.clone()
+            w0, w1, w2 = state["w0"], state["w1"], state["w2"]
+            onw = self.o_norm.weight.to(x_new.dtype)
+            Wq = self.to_qkv.weight[:self.dim]
+            bq = self.to_qkv.bias[:self.dim] if self.to_qkv.bias is not None else None
+
+            def _run(x):
+                q_lin = F.silu(F.linear(x, Wq, bq), inplace=False)
+                q_un = rearrange(q_lin, "b l (h d) -> (b h) (l d)", h=self.num_heads)
+                o = ext.infer_step_mid(q_un, w0, w2, w1, onw, 1e-5, 1e-5)
+                out = rearrange(o.unsqueeze(1), "(b h) l d -> b l (h d)",
+                                h=self.num_heads, b=x.shape[0])
+                return self.c_proj(out)
+
+            # warmup on a side stream (required before capture)
+            s = torch.cuda.Stream()
+            s.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(s):
+                for _ in range(3):
+                    _run(static_in)
+            torch.cuda.current_stream().wait_stream(s)
+
+            graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(graph):
+                static_out = _run(static_in)
+            return {"graph": graph, "static_in": static_in, "static_out": static_out}
+        except Exception:
+            return None
+
+    @torch.no_grad()
+    def _infer_step_eager(self, x_new: torch.Tensor, state: dict):
+        B = x_new.shape[0]
+        w0, w1, w2 = state["w0"], state["w1"], state["w2"]
+        # Incremental apply only needs q (k,v feed the update, which is dropped at
+        # chunk>=seq). to_qkv is Linear(dim, 3*dim); compute ONLY the q rows
+        # (first `dim` outputs) -> 1/3 the GEMM, bit-identical to slicing the full.
+        Wq = self.to_qkv.weight[:self.dim]
+        bq = self.to_qkv.bias[:self.dim] if self.to_qkv.bias is not None else None
+        q_lin = F.silu(F.linear(x_new, Wq, bq), inplace=False)
+        if self.use_cuda_kernel and x_new.shape[1] == 1 and not self.use_gate_fn:
+            from .ttt_cuda import _load_extension
+            ext = _load_extension()
+            if ext is not None and hasattr(ext, "infer_step_mid"):
+                # Stage-1 mega: q-norm + apply + RMSNorm in ONE kernel.
+                # Pass UN-normalized per-head q; the kernel does the L2 q-norm.
+                q_un = rearrange(q_lin, "b l (h d) -> (b h) (l d)", h=self.num_heads)
+                onw = self.o_norm.weight.to(q_un.dtype)
+                o = ext.infer_step_mid(q_un, w0, w2, w1, onw, 1e-5, 1e-5)  # [B*h, dh]
+                out = rearrange(o.unsqueeze(1), "(b h) l d -> b l (h d)",
+                                h=self.num_heads, b=B)
+                return self.c_proj(out)
+        q = rearrange(q_lin, "b l (h d) -> (b h) l d", h=self.num_heads)
+        q = q / (q.norm(dim=2, keepdim=True) + 1e-5).to(x_new.dtype)
+        if self.use_cuda_kernel and x_new.shape[1] == 1:
+            from .ttt_cuda import _load_extension
+            ext = _load_extension()
+            if ext is not None and hasattr(ext, "infer_step"):
+                # fused apply + RMSNorm: q is [B*h, 1, dh] -> squeeze the token dim
+                qn = q.squeeze(1).contiguous()       # [B*h, dh]
+                onw = self.o_norm.weight.to(qn.dtype)
+                o = ext.infer_step(qn, w0, w2, w1, onw, 1e-5)  # [B*h, dh]
+                out = o.unsqueeze(1)
+                if self.use_gate_fn:
+                    out = out * self.gate_fn(x_new).reshape(
+                        B * self.num_heads, 1, self.head_dim)
+                out = rearrange(out, "(b h) l d -> b l (h d)", h=self.num_heads, b=B)
+                return self.c_proj(out)
+        out = (F.silu(q @ w0, inplace=False) * (q @ w2)) @ w1
+        out = self.o_norm(out)
+        if self.use_gate_fn:
+            out = out * self.gate_fn(x_new)  # note: gate uses x_new (per-position, ok)
+        out = rearrange(out, "(b h) l d -> b l (h d)", h=self.num_heads, b=B)
+        return self.c_proj(out)
 
     def extra_repr(self) -> str:
         return (f"w0 shape: {self.w0.shape}, w1 shape: {self.w1.shape}, w2 shape: {self.w2.shape}, "

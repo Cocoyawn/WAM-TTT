@@ -329,4 +329,189 @@ torch::Tensor weightnorm_bwd(
     return gx;
 }
 
+// ===================== INFERENCE single-step fused kernel =====================
+//
+// Fuses the whole infer_step core for ONE token into a SINGLE kernel:
+//   gate = q @ w0 ; up = q @ w2 ; h = silu(gate)*up ; o = h @ w1 ;
+//   o = RMSNorm(o) * o_norm_weight
+// q: [N, D] (N = B*heads rows, one token each), w0/w2: [N, D, H], w1: [N, H, D].
+// (here D = head_dim = H = hidden per head, square.) One block per row n;
+// blockDim.x = H threads. q and h live in shared memory; no global intermediates.
+//
+// Replaces ~19 tiny kernel launches/step with 1. fp32 math internally.
+template <typename scalar_t>
+__global__ void infer_step_kernel(
+    const scalar_t* __restrict__ q,    // [N, D]
+    const scalar_t* __restrict__ w0,   // [N, D, H]
+    const scalar_t* __restrict__ w2,   // [N, D, H]
+    const scalar_t* __restrict__ w1,   // [N, H, D]
+    const scalar_t* __restrict__ onw,  // [D] o_norm weight (RMSNorm, per head_dim)
+    scalar_t* __restrict__ out,        // [N, D]
+    int64_t N, int D, int H, float eps) {
+    int n = blockIdx.x;
+    if (n >= N) return;
+    int t = threadIdx.x;  // 0..H-1 (and reused for 0..D-1; D==H here)
+
+    extern __shared__ float sh[];
+    float* sq = sh;          // [D] the query row
+    float* shd = sh + D;     // [H] hidden = silu(gate)*up
+
+    // load q row into shared
+    for (int i = t; i < D; i += blockDim.x) sq[i] = to_f(q[n * D + i]);
+    __syncthreads();
+
+    // each thread j computes gate_j and up_j = sum_i q_i * w[i,j]
+    if (t < H) {
+        float gate = 0.f, up = 0.f;
+        const scalar_t* w0n = w0 + (int64_t)n * D * H;
+        const scalar_t* w2n = w2 + (int64_t)n * D * H;
+        for (int i = 0; i < D; ++i) {
+            float qi = sq[i];
+            gate += qi * to_f(w0n[i * H + t]);
+            up   += qi * to_f(w2n[i * H + t]);
+        }
+        float s = gate / (1.f + __expf(-gate));   // silu(gate)
+        shd[t] = s * up;
+    }
+    __syncthreads();
+
+    // each thread d computes o_d = sum_j h_j * w1[j,d]
+    float o = 0.f;
+    if (t < D) {
+        const scalar_t* w1n = w1 + (int64_t)n * H * D;
+        for (int j = 0; j < H; ++j) o += shd[j] * to_f(w1n[j * D + t]);
+    }
+    // RMSNorm over the D outputs of this row: need sum of squares across threads
+    __shared__ float red[1024];
+    red[t] = (t < D) ? o * o : 0.f;
+    __syncthreads();
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (t < s) red[t] += red[t + s];
+        __syncthreads();
+    }
+    float inv_rms = rsqrtf(red[0] / D + eps);
+    if (t < D) {
+        out[n * D + t] = static_cast<scalar_t>(o * inv_rms * to_f(onw[t]));
+    }
+}
+
+torch::Tensor infer_step(
+    const torch::Tensor& q,    // [N, D]
+    const torch::Tensor& w0,   // [N, D, H]
+    const torch::Tensor& w2,   // [N, D, H]
+    const torch::Tensor& w1,   // [N, H, D]
+    const torch::Tensor& o_norm_weight,  // [D]
+    double eps) {
+    auto qc = q.contiguous(), w0c = w0.contiguous(), w2c = w2.contiguous(),
+         w1c = w1.contiguous(), onw = o_norm_weight.contiguous();
+    int64_t N = qc.size(0);
+    int D = qc.size(1);
+    int H = w0c.size(2);
+    auto out = torch::empty_like(qc);
+    int threads = (D > H ? D : H);
+    // round up to power of 2 for the reduction
+    int tp = 1; while (tp < threads) tp <<= 1;
+    size_t shmem = (D + H) * sizeof(float);
+    const c10::cuda::CUDAGuard guard(qc.device());
+    auto stream = at::cuda::getCurrentCUDAStream();
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        at::ScalarType::Half, at::ScalarType::BFloat16, qc.scalar_type(), "infer_step", [&] {
+            infer_step_kernel<scalar_t><<<N, tp, shmem, stream>>>(
+                qc.data_ptr<scalar_t>(), w0c.data_ptr<scalar_t>(), w2c.data_ptr<scalar_t>(),
+                w1c.data_ptr<scalar_t>(), onw.data_ptr<scalar_t>(),
+                out.data_ptr<scalar_t>(), N, D, H, (float)eps);
+        });
+    return out;
+}
+
+// ---- Stage-1 mega: fuse q-norm + apply + RMSNorm into ONE kernel ----
+// Same as infer_step_kernel but takes the UN-normalized per-head q and does the
+// L2 q-normalization (q / (||q||+1e-5)) inside, eliminating the separate q-norm
+// launch (the single biggest infer_step segment, ~37%).
+template <typename scalar_t>
+__global__ void infer_step_mid_kernel(
+    const scalar_t* __restrict__ q,    // [N, D] UN-normalized
+    const scalar_t* __restrict__ w0,   // [N, D, H]
+    const scalar_t* __restrict__ w2,   // [N, D, H]
+    const scalar_t* __restrict__ w1,   // [N, H, D]
+    const scalar_t* __restrict__ onw,  // [D]
+    scalar_t* __restrict__ out,        // [N, D]
+    int64_t N, int D, int H, float eps, float qeps) {
+    int n = blockIdx.x;
+    if (n >= N) return;
+    int t = threadIdx.x;
+
+    extern __shared__ float sh[];
+    float* sq = sh;          // [D] query row (post q-norm)
+    float* shd = sh + D;     // [H] hidden
+
+    // load q + accumulate sum of squares for the L2 norm
+    __shared__ float qred[1024];
+    float qv = (t < D) ? to_f(q[n * D + t]) : 0.f;
+    for (int i = t; i < D; i += blockDim.x) sq[i] = to_f(q[n * D + i]);
+    qred[t] = (t < D) ? qv * qv : 0.f;
+    __syncthreads();
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (t < s) qred[t] += qred[t + s];
+        __syncthreads();
+    }
+    float qinv = 1.0f / (sqrtf(qred[0]) + qeps);   // 1/(||q||+1e-5)
+    // normalize sq in place
+    for (int i = t; i < D; i += blockDim.x) sq[i] *= qinv;
+    __syncthreads();
+
+    if (t < H) {
+        float gate = 0.f, up = 0.f;
+        const scalar_t* w0n = w0 + (int64_t)n * D * H;
+        const scalar_t* w2n = w2 + (int64_t)n * D * H;
+        for (int i = 0; i < D; ++i) {
+            float qi = sq[i];
+            gate += qi * to_f(w0n[i * H + t]);
+            up   += qi * to_f(w2n[i * H + t]);
+        }
+        float s = gate / (1.f + __expf(-gate));
+        shd[t] = s * up;
+    }
+    __syncthreads();
+
+    float o = 0.f;
+    if (t < D) {
+        const scalar_t* w1n = w1 + (int64_t)n * H * D;
+        for (int j = 0; j < H; ++j) o += shd[j] * to_f(w1n[j * D + t]);
+    }
+    __shared__ float red[1024];
+    red[t] = (t < D) ? o * o : 0.f;
+    __syncthreads();
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (t < s) red[t] += red[t + s];
+        __syncthreads();
+    }
+    float inv_rms = rsqrtf(red[0] / D + eps);
+    if (t < D) out[n * D + t] = static_cast<scalar_t>(o * inv_rms * to_f(onw[t]));
+}
+
+torch::Tensor infer_step_mid(
+    const torch::Tensor& q,    // [N, D] UN-normalized per-head q
+    const torch::Tensor& w0, const torch::Tensor& w2, const torch::Tensor& w1,
+    const torch::Tensor& o_norm_weight, double eps, double qeps) {
+    auto qc = q.contiguous(), w0c = w0.contiguous(), w2c = w2.contiguous(),
+         w1c = w1.contiguous(), onw = o_norm_weight.contiguous();
+    int64_t N = qc.size(0);
+    int D = qc.size(1), H = w0c.size(2);
+    auto out = torch::empty_like(qc);
+    int threads = (D > H ? D : H);
+    int tp = 1; while (tp < threads) tp <<= 1;
+    size_t shmem = (D + H) * sizeof(float);
+    const c10::cuda::CUDAGuard guard(qc.device());
+    auto stream = at::cuda::getCurrentCUDAStream();
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        at::ScalarType::Half, at::ScalarType::BFloat16, qc.scalar_type(), "infer_step_mid", [&] {
+            infer_step_mid_kernel<scalar_t><<<N, tp, shmem, stream>>>(
+                qc.data_ptr<scalar_t>(), w0c.data_ptr<scalar_t>(), w2c.data_ptr<scalar_t>(),
+                w1c.data_ptr<scalar_t>(), onw.data_ptr<scalar_t>(),
+                out.data_ptr<scalar_t>(), N, D, H, (float)eps, (float)qeps);
+        });
+    return out;
+}
+
 }  // namespace ttt_cuda

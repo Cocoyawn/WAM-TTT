@@ -112,16 +112,25 @@ class _CausalTTTFunction(torch.autograd.Function):
                 vlm_k, vlm_v, vlm_lr0, vlm_lr1, vlm_lr2):
         from ..ttt import causal_block_fast_weight_swish_glu
         ctx.chunk_size = chunk_size
-        ctx.save_for_backward(w0, w1, w2, q, k, v, lr0, lr1, lr2,
-                              vlm_k, vlm_v, vlm_lr0, vlm_lr1, vlm_lr2)
         use_cuda = (HAVE_CUDA_TTT and q.is_cuda
                     and q.dtype in (torch.float32, torch.float16, torch.bfloat16))
         ctx.used_cuda = use_cuda
-        if use_cuda:
+        ext = _load_extension() if use_cuda else None
+        entry = (None, None, None)
+        if use_cuda and ext is not None and hasattr(ext, "causal_ttt_forward_save"):
+            # Phase 1: forward that also saves per-chunk entry weights, so the
+            # backward needs no forward-recompute loop.
+            with torch.no_grad():
+                res = ext.causal_ttt_forward_save(
+                    w0, w1, w2, q, k, v, lr0, lr1, lr2, chunk_size,
+                    vlm_k, vlm_v, vlm_lr0, vlm_lr1, vlm_lr2,
+                )
+            out, nw0, nw1, nw2 = res[0], res[1], res[2], res[3]
+            entry = (res[4], res[5], res[6])  # entry_w0/w1/w2 [n_chunk,B,*,*]
+        elif use_cuda:
             with torch.no_grad():
                 out, nw0, nw1, nw2 = causal_ttt_forward(
-                    w0, w1, w2, q, k, v, lr0, lr1, lr2,
-                    chunk_size=chunk_size,
+                    w0, w1, w2, q, k, v, lr0, lr1, lr2, chunk_size=chunk_size,
                     vlm_k=vlm_k, vlm_v=vlm_v,
                     vlm_lr0=vlm_lr0, vlm_lr1=vlm_lr1, vlm_lr2=vlm_lr2,
                 )
@@ -133,13 +142,17 @@ class _CausalTTTFunction(torch.autograd.Function):
                     vlm_k=vlm_k, vlm_v=vlm_v,
                     vlm_lr0=vlm_lr0, vlm_lr1=vlm_lr1, vlm_lr2=vlm_lr2,
                 )
+        ctx.save_for_backward(w0, w1, w2, q, k, v, lr0, lr1, lr2,
+                              vlm_k, vlm_v, vlm_lr0, vlm_lr1, vlm_lr2,
+                              entry[0], entry[1], entry[2])
         return out, nw0, nw1, nw2
 
     @staticmethod
     def backward(ctx, g_out, g_w0, g_w1, g_w2):
         saved = ctx.saved_tensors
         (w0, w1, w2, q, k, v, lr0, lr1, lr2,
-         vlm_k, vlm_v, vlm_lr0, vlm_lr1, vlm_lr2) = saved
+         vlm_k, vlm_v, vlm_lr0, vlm_lr1, vlm_lr2,
+         entry_w0, entry_w1, entry_w2) = saved
 
         # ---- Plan A: CUDA fused backward ----
         ext = _load_extension()
@@ -149,6 +162,7 @@ class _CausalTTTFunction(torch.autograd.Function):
                 w0, w1, w2, q, k, v, lr0, lr1, lr2, ctx.chunk_size,
                 g_out_c, g_w0.contiguous(), g_w1.contiguous(), g_w2.contiguous(),
                 vlm_k, vlm_v, vlm_lr0, vlm_lr1, vlm_lr2,
+                entry_w0, entry_w1, entry_w2,  # Phase 1: skip forward-recompute
             )
             # res = [gw0,gw1,gw2, gq,gk,gv, glr0,glr1,glr2, (gvk,gvv,gvl0,gvl1,gvl2)]
             gw0, gw1, gw2, gq, gk, gv, gl0, gl1, gl2 = res[:9]
@@ -168,12 +182,13 @@ class _CausalTTTFunction(torch.autograd.Function):
 
         # ---- fallback: exact recompute backward ----
         from ..ttt import causal_block_fast_weight_swish_glu
-        diff_inputs = [t for t in saved if t is not None and t.requires_grad]
+        core = saved[:14]  # drop the 3 entry-weight tensors (CUDA-path only)
+        diff_inputs = [t for t in core if t is not None and t.requires_grad]
         if not diff_inputs:
             return (None,) * 15
         with torch.enable_grad():
             ins = [t.detach().requires_grad_(t.requires_grad) if t is not None else None
-                   for t in saved]
+                   for t in core]
             (w0_, w1_, w2_, q_, k_, v_, lr0_, lr1_, lr2_,
              vk_, vv_, vl0_, vl1_, vl2_) = ins
             out, nw0, nw1, nw2 = causal_block_fast_weight_swish_glu(

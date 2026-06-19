@@ -106,6 +106,71 @@ class MoEGeneratorBlock(nn.Module):
         x = x + self.mlp(self.norm2(x))
         return x
 
+    # ------------------------------------------------------------------
+    # Incremental (O(1)-per-token) decode. Numerically mirrors forward()'s
+    # apply for the new position; used by ImageGeneratorTransformer.generate_incremental.
+    # Only 'ttt' and plain 'attention' blocks are supported (the deployed
+    # [A,A,A,T] stack); 'swa'/'gla'/'gdn' fall back to None (caller recomputes).
+    # ------------------------------------------------------------------
+    @torch.no_grad()
+    def infer_init(self, vlm_feat):
+        """Build the per-block decode state once. vlm_feat: (B, T_vlm, vlm_hidden)."""
+        if self.mixer_type == "ttt":
+            ctx = self.vlm_proj(vlm_feat.to(self.vlm_proj.weight.dtype))
+            return {"kind": "ttt", "ttt": self.attn.infer_build_state(ctx)}
+        if self.mixer_type == "attention":
+            # cache the VLM key/value (constant across steps) + grow image K/V.
+            E = self.attn.embed_dim
+            ipw, ipb = self.attn.in_proj_weight, self.attn.in_proj_bias
+            v_feat = self.vlm_proj(vlm_feat.to(self.vlm_proj.weight.dtype))  # (B,T_vlm,E)
+            Wk, Wv = ipw[E:2 * E], ipw[2 * E:]
+            bk = ipb[E:2 * E] if ipb is not None else None
+            bv = ipb[2 * E:] if ipb is not None else None
+            k_vlm = torch.nn.functional.linear(v_feat, Wk, bk)
+            v_vlm = torch.nn.functional.linear(v_feat, Wv, bv)
+            return {"kind": "attention", "k_vlm": k_vlm, "v_vlm": v_vlm,
+                    "k_img": None, "v_img": None}
+        return None  # unsupported mixer for incremental decode
+
+    @torch.no_grad()
+    def infer_step(self, x, state):
+        """One token through the whole block (norm1 -> mixer -> residual ->
+        norm2 -> mlp). x: (B, 1, hidden). Returns updated x (B, 1, hidden)."""
+        x_norm = self.norm1(x)
+        if state["kind"] == "ttt":
+            attn_out = self.attn.infer_step(x_norm, state["ttt"])
+        else:  # attention: KV-cached single-token attention == full causal+global-VLM
+            attn = self.attn
+            E, H = attn.embed_dim, attn.num_heads
+            dh = E // H
+            B = x_norm.shape[0]
+            ipw, ipb = attn.in_proj_weight, attn.in_proj_bias
+            Wq, Wk, Wv = ipw[:E], ipw[E:2 * E], ipw[2 * E:]
+            bq = ipb[:E] if ipb is not None else None
+            bk = ipb[E:2 * E] if ipb is not None else None
+            bv = ipb[2 * E:] if ipb is not None else None
+            q = torch.nn.functional.linear(x_norm, Wq, bq)  # (B,1,E)
+            k = torch.nn.functional.linear(x_norm, Wk, bk)
+            v = torch.nn.functional.linear(x_norm, Wv, bv)
+            # grow image K/V cache (causal: token t sees image 0..t)
+            state["k_img"] = k if state["k_img"] is None else torch.cat([state["k_img"], k], dim=1)
+            state["v_img"] = v if state["v_img"] is None else torch.cat([state["v_img"], v], dim=1)
+            K = torch.cat([state["k_img"], state["k_vlm"]], dim=1)  # (B,Lk,E)
+            V = torch.cat([state["v_img"], state["v_vlm"]], dim=1)
+            Lk = K.shape[1]
+            qh = q.view(B, 1, H, dh).transpose(1, 2)       # (B,H,1,dh)
+            Kh = K.view(B, Lk, H, dh).transpose(1, 2)
+            Vh = V.view(B, Lk, H, dh).transpose(1, 2)
+            scaling = dh ** -0.5
+            attn_w = torch.softmax((qh * scaling) @ Kh.transpose(-2, -1), dim=-1)
+            o = (attn_w @ Vh).transpose(1, 2).reshape(B, 1, E)  # (B,1,E)
+            attn_out = attn.out_proj(o)
+        x = x + attn_out
+        x = x + self.mlp(self.norm2(x))
+        return x
+
+
+
 class ImageGeneratorTransformer(nn.Module):
     """
     Autoregressive Transformer for Image Generation using MoE-like Layer-wise Cross Attention
@@ -158,5 +223,46 @@ class ImageGeneratorTransformer(nn.Module):
             
         x = self.norm_final(x)
         logits = self.head(x)
-        
+
         return logits, hidden_states
+
+    @torch.no_grad()
+    def generate_incremental(self, vlm_hidden_states, num_tokens):
+        """O(n) autoregressive decode: replaces predict_action's O(n^2) loop
+        (full generator.forward on the growing prefix at every step). Each TTT
+        block caches its VLM-pre-updated fast weights once and applies infer_step
+        per token; each attention block keeps a KV-cache. Positions are
+        independent at chunk>=seq for TTT, and KV-cache is exact for attention,
+        so the produced token IDs and the per-layer hidden_states match the
+        full-recompute path within round-off.
+
+        Returns (token_ids (B, num_tokens), hidden_states list[(B, num_tokens, H)]),
+        matching predict_action's `curr_ids[:, 1:]` and the line-887 full forward.
+        Returns None if any block uses an unsupported mixer (caller recomputes)."""
+        blocks = self.blocks
+        relevant_vlm = vlm_hidden_states[-len(blocks):]
+        dtype = next(self.parameters()).dtype
+        states = []
+        for blk, vfeat in zip(blocks, relevant_vlm):
+            st = blk.infer_init(vfeat.to(dtype=dtype))
+            if st is None:
+                return None  # unsupported mixer -> let caller fall back
+            states.append(st)
+
+        B = vlm_hidden_states[0].shape[0]
+        device = vlm_hidden_states[0].device
+        curr_id = torch.zeros((B, 1), dtype=torch.long, device=device)  # BOS-like start
+        out_ids = []
+        hs_per_layer = [[] for _ in blocks]
+        for t in range(num_tokens):
+            x = self.token_emb(curr_id) + self.pos_embed[:, t:t + 1, :]
+            for li, (blk, st) in enumerate(zip(blocks, states)):
+                x = blk.infer_step(x, st)
+                hs_per_layer[li].append(x)
+            logits = self.head(self.norm_final(x))      # (B,1,V)
+            nxt = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
+            out_ids.append(nxt)
+            curr_id = nxt
+        token_ids = torch.cat(out_ids, dim=1)           # (B, num_tokens)
+        hidden_states = [torch.cat(h, dim=1) for h in hs_per_layer]
+        return token_ids, hidden_states

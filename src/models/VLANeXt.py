@@ -219,6 +219,12 @@ class VLANeXt(nn.Module):
             self.vq_model = None
             self.generator = None
 
+        # When True, predict_action decodes the 256 image tokens with the
+        # generator's O(n) incremental path (generate_incremental) instead of the
+        # O(n^2) full-recompute AR loop. Default False -> byte-identical to the
+        # original loop (zero eval regression). Toggled by eval/bench scripts.
+        self.use_incremental_gen = False
+
         if self.use_proprio_input_vlm:
             projector_input_dim = action_dim
             if use_transformer_proprio_projector:
@@ -876,15 +882,24 @@ class VLANeXt(nn.Module):
         policy_history = history_actions if self.use_action_input_policy else None
         gen_hidden_states = None
         if self.enable_future_image_loss and self.condition_type in ["tight", "soft"]:
-             num_img_tokens = 256 
-             curr_ids = torch.zeros((B, 1), dtype=torch.long, device=input_ids.device)
+             num_img_tokens = 256
              gen_context = hidden_states
-             for _ in range(num_img_tokens):
-                 logits, _ = self.generator(curr_ids, gen_context)
-                 next_token = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
-                 curr_ids = torch.cat([curr_ids, next_token], dim=1)
-             gen_input = curr_ids[:, :-1]
-             _, gen_hidden_states = self.generator(gen_input, gen_context)
+             gen_hidden_states = None
+             if self.use_incremental_gen:
+                 # O(n) incremental decode -> token IDs + per-layer hidden states
+                 # in one pass (equivalent to the AR loop + the line-887 forward).
+                 res = self.generator.generate_incremental(gen_context, num_img_tokens)
+                 if res is not None:
+                     _, gen_hidden_states = res
+             if gen_hidden_states is None:
+                 # full-recompute fallback (original O(n^2) path)
+                 curr_ids = torch.zeros((B, 1), dtype=torch.long, device=input_ids.device)
+                 for _ in range(num_img_tokens):
+                     logits, _ = self.generator(curr_ids, gen_context)
+                     next_token = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
+                     curr_ids = torch.cat([curr_ids, next_token], dim=1)
+                 gen_input = curr_ids[:, :-1]
+                 _, gen_hidden_states = self.generator(gen_input, gen_context)
 
         if self.loss_type == "regression":
             if self.condition_type in ["tight", "soft"]:
