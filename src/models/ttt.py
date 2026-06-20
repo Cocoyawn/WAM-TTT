@@ -748,8 +748,15 @@ class FastWeightGluMLPMultihead(nn.Module):
         """
         # CUDA-Graph fast path: capture the whole single-token step once, then
         # replay -> eliminates per-call python dispatch + launch overhead.
+        # DISABLED by default: graph capture fixes buffer addresses, which under
+        # the dynamic per-step allocation of a real eval rollout leads to
+        # "illegal memory access" / CUBLAS_STATUS_EXECUTION_FAILED after many
+        # replays (verified 2026-06-19: incremental eval crashed every episode ->
+        # caught by the eval try/except -> silent SR=0). The eager path keeps the
+        # fused mid-kernel (still O(n)); only the per-call launch overhead returns.
+        # Opt back in by setting blk.attn._use_infer_graph=True if buffers are static.
         if (self.use_cuda_kernel and x_new.shape[1] == 1 and not self.use_gate_fn
-                and x_new.is_cuda and getattr(self, "_use_infer_graph", True)):
+                and x_new.is_cuda and getattr(self, "_use_infer_graph", False)):
             out = self._infer_step_graphed(x_new, state)
             if out is not None:
                 return out

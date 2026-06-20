@@ -9,6 +9,7 @@ import sys
 import argparse
 import yaml
 import json
+import time
 import numpy as np
 import tqdm
 from libero.libero import benchmark
@@ -21,6 +22,7 @@ from src.datasets.libero_act_old import (
     action_min_goal, action_max_goal,
     action_min_10, action_max_10,
 )
+from src.datasets.libero_act import action_min_mixed, action_max_mixed
 
 from src.evaluation.libero_bench.libero_utils import (
     get_libero_dummy_action,
@@ -108,9 +110,20 @@ def eval_libero(cfg) -> None:
     }
     category_stats = {v: {'success': 0, 'total': 0} for v in category_name_map.values()}
 
-    train_suite_name = model.train_config['data']['task_suite_name']
+    # inference timing (model forward incl. 256-token image gen); excludes sim/render.
+    infer_time_sum = 0.0
+    infer_time_cnt = 0
 
-    if 'spatial' in train_suite_name:
+    # Pick the action normalization stats the model was TRAINED with.
+    # Mixed-suite training (dataset_name == "libero_mixed") has no task_suite_name
+    # and uses the shared libero_mixed stats; single-suite uses its own stats.
+    train_dataset_name = model.train_config['data'].get('dataset_name', '')
+    train_suite_name = model.train_config['data'].get('task_suite_name', '')
+
+    if 'mixed' in train_dataset_name:
+        action_min = np.array(action_min_mixed)
+        action_max = np.array(action_max_mixed)
+    elif 'spatial' in train_suite_name:
         action_min = np.array(action_min_spatial)
         action_max = np.array(action_max_spatial)
     elif 'object' in train_suite_name:
@@ -247,6 +260,9 @@ def eval_libero(cfg) -> None:
                     }
 
                     if len(action_buffer) == 0:
+                        if torch.cuda.is_available():
+                            torch.cuda.synchronize()
+                        _t0 = time.time()
                         raw_action_chunk = get_action(
                             cfg,
                             model,
@@ -254,6 +270,10 @@ def eval_libero(cfg) -> None:
                             task_description,
                             processor=processor,
                         )
+                        if torch.cuda.is_available():
+                            torch.cuda.synchronize()
+                        infer_time_sum += time.time() - _t0
+                        infer_time_cnt += 1
                         
                         if raw_action_chunk.ndim == 1:
                             raw_action_chunk = raw_action_chunk[None, :]
@@ -299,6 +319,10 @@ def eval_libero(cfg) -> None:
             print(f"Success: {done}")
             print(f"# episodes completed so far: {total_episodes}")
             print(f"# successes: {total_successes} ({total_successes / total_episodes * 100:.1f}%)")
+            if infer_time_cnt > 0:
+                _avg = infer_time_sum / infer_time_cnt
+                print(f"[timing] avg model inference: {_avg*1000:.1f} ms/call over {infer_time_cnt} calls")
+                log_file.write(f"[timing] avg model inference: {_avg*1000:.1f} ms/call over {infer_time_cnt} calls\n")
             log_file.write(f"Success: {done}\n")
             log_file.write(f"# episodes completed so far: {total_episodes}\n")
             log_file.write(f"# successes: {total_successes} ({total_successes / total_episodes * 100:.1f}%)\n")

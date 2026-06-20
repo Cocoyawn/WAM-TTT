@@ -1,0 +1,10 @@
+{
+  "margin_min": 0.0,
+  "margin_p1": 0.0,
+  "margin_p10": 0.03125,
+  "margin_median": 0.15625,
+  "perturb_median": 0.08984375,
+  "perturb_max": 0.1796875,
+  "tf_flip_rate": 0.046875,
+  "N": 256
+}

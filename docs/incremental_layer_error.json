@@ -1,0 +1,40 @@
+{
+  "meta": {
+    "desc": "Per-layer teacher-forced |Delta| between incremental infer_step and full-recompute forward, real mix checkpoint, 256-token seq, bf16",
+    "source": "scripts/diag_incremental_perlayer.py (run 2026-06-19)",
+    "depth": 29,
+    "ttt_layers": [3, 7, 11, 15, 19, 23, 27],
+    "checkpoint": "ttt_chunk256_libero_mixed_clean/checkpoint_final.pt"
+  },
+  "layers": [
+    {"layer": 0,  "mixer": "attention", "mean_abs": 5.4550e-04, "max_abs": 1.5625e-02, "ref_scale": 4.0625e-01},
+    {"layer": 1,  "mixer": "attention", "mean_abs": 2.2430e-03, "max_abs": 3.1250e-02, "ref_scale": 6.5625e-01},
+    {"layer": 2,  "mixer": "attention", "mean_abs": 3.8605e-03, "max_abs": 6.2500e-02, "ref_scale": 8.6719e-01},
+    {"layer": 3,  "mixer": "ttt",       "mean_abs": 1.0925e-02, "max_abs": 9.3750e-02, "ref_scale": 1.2188e+00},
+    {"layer": 4,  "mixer": "attention", "mean_abs": 1.2268e-02, "max_abs": 9.3750e-02, "ref_scale": 1.3359e+00},
+    {"layer": 5,  "mixer": "attention", "mean_abs": 1.3550e-02, "max_abs": 9.3750e-02, "ref_scale": 1.4219e+00},
+    {"layer": 6,  "mixer": "attention", "mean_abs": 1.4893e-02, "max_abs": 1.2500e-01, "ref_scale": 1.5234e+00},
+    {"layer": 7,  "mixer": "ttt",       "mean_abs": 2.1729e-02, "max_abs": 1.5625e-01, "ref_scale": 1.7344e+00},
+    {"layer": 8,  "mixer": "attention", "mean_abs": 2.2949e-02, "max_abs": 1.5625e-01, "ref_scale": 1.7969e+00},
+    {"layer": 9,  "mixer": "attention", "mean_abs": 2.4170e-02, "max_abs": 1.5625e-01, "ref_scale": 1.8672e+00},
+    {"layer": 10, "mixer": "attention", "mean_abs": 2.5269e-02, "max_abs": 1.8750e-01, "ref_scale": 1.9062e+00},
+    {"layer": 11, "mixer": "ttt",       "mean_abs": 3.2227e-02, "max_abs": 2.5000e-01, "ref_scale": 2.0938e+00},
+    {"layer": 12, "mixer": "attention", "mean_abs": 3.3203e-02, "max_abs": 2.5000e-01, "ref_scale": 2.1562e+00},
+    {"layer": 13, "mixer": "attention", "mean_abs": 3.4424e-02, "max_abs": 2.5000e-01, "ref_scale": 2.2031e+00},
+    {"layer": 14, "mixer": "attention", "mean_abs": 3.5400e-02, "max_abs": 2.8125e-01, "ref_scale": 2.2656e+00},
+    {"layer": 15, "mixer": "ttt",       "mean_abs": 4.2236e-02, "max_abs": 2.5000e-01, "ref_scale": 2.4062e+00},
+    {"layer": 16, "mixer": "attention", "mean_abs": 4.3213e-02, "max_abs": 2.8125e-01, "ref_scale": 2.4688e+00},
+    {"layer": 17, "mixer": "attention", "mean_abs": 4.4434e-02, "max_abs": 2.8125e-01, "ref_scale": 2.5156e+00},
+    {"layer": 18, "mixer": "attention", "mean_abs": 4.5654e-02, "max_abs": 3.1250e-01, "ref_scale": 2.6094e+00},
+    {"layer": 19, "mixer": "ttt",       "mean_abs": 5.2246e-02, "max_abs": 3.4375e-01, "ref_scale": 2.8281e+00},
+    {"layer": 20, "mixer": "attention", "mean_abs": 5.3711e-02, "max_abs": 3.4375e-01, "ref_scale": 2.8906e+00},
+    {"layer": 21, "mixer": "attention", "mean_abs": 5.4932e-02, "max_abs": 4.0625e-01, "ref_scale": 2.9375e+00},
+    {"layer": 22, "mixer": "attention", "mean_abs": 5.6641e-02, "max_abs": 4.0625e-01, "ref_scale": 3.0000e+00},
+    {"layer": 23, "mixer": "ttt",       "mean_abs": 6.3965e-02, "max_abs": 4.0625e-01, "ref_scale": 3.2031e+00},
+    {"layer": 24, "mixer": "attention", "mean_abs": 6.6406e-02, "max_abs": 4.3750e-01, "ref_scale": 3.3281e+00},
+    {"layer": 25, "mixer": "attention", "mean_abs": 6.9336e-02, "max_abs": 4.3750e-01, "ref_scale": 3.4062e+00},
+    {"layer": 26, "mixer": "attention", "mean_abs": 7.2266e-02, "max_abs": 4.6875e-01, "ref_scale": 3.5469e+00},
+    {"layer": 27, "mixer": "ttt",       "mean_abs": 8.2520e-02, "max_abs": 5.7812e-01, "ref_scale": 3.8594e+00},
+    {"layer": 28, "mixer": "attention", "mean_abs": 9.3262e-02, "max_abs": 7.5000e-01, "ref_scale": 4.4375e+00}
+  ]
+}

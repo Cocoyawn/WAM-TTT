@@ -1,0 +1,7 @@
+scene,method,median_ms,std_ms,speedup_vs_attn
+A_single_forward,attention,0.104,0.145,1.00
+A_single_forward,torch-TTT-256,1.903,0.752,0.05
+A_single_forward,CUDA-TTT-256,1.308,0.385,0.08
+B_256step_rollout,attention,90.502,2.099,1.00
+B_256step_rollout,torch-TTT-256,516.238,8.470,0.18
+B_256step_rollout,CUDA-TTT-256,14.082,1.136,6.43

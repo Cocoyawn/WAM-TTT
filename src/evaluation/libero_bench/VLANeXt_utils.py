@@ -102,7 +102,10 @@ def get_vla(cfg):
             generator_mixer_type=model_config.get('generator_mixer_type', 'attention'),
             generator_mix_every_n=model_config.get('generator_mix_every_n', 4),
             generator_ttt_chunk_size=model_config.get('generator_ttt_chunk_size', 16),
-            generator_ttt_use_cuda_kernel=model_config.get('generator_ttt_use_cuda_kernel', False),
+            generator_ttt_use_cuda_kernel=(
+                getattr(getattr(cfg, "eval", None), "ttt_use_cuda_kernel", None)
+                if getattr(getattr(cfg, "eval", None), "ttt_use_cuda_kernel", None) is not None
+                else model_config.get('generator_ttt_use_cuda_kernel', False)),
             attn_implementation=attn_implementation,
             dct_loss_weight=model_config.get('dct_loss_weight', 0.1),
             dct_low_freq_weight=model_config.get('dct_low_freq_weight', 1.0),
@@ -125,8 +128,22 @@ def get_vla(cfg):
 
     # O(n) incremental image-token decode in predict_action (replaces the
     # O(n^2) AR full-recompute loop). Equivalent within bf16 round-off; see
-    # scripts/equiv_predict_action_b.py. Off by default -> original behavior.
-    model.use_incremental_gen = model_config.get('generator_use_incremental_gen', False)
+    # scripts/equiv_predict_action_b.py. eval-config override > checkpoint config
+    # > default off (old checkpoints lack the key, so the eval config is how we
+    # actually turn the CUDA-accelerated incremental path on at eval time).
+    _eval_inc = getattr(getattr(cfg, "eval", None), "use_incremental_gen", None)
+    model.use_incremental_gen = (
+        _eval_inc if _eval_inc is not None
+        else model_config.get('generator_use_incremental_gen', False))
+    # read the actual per-TTT-block CUDA flag (set at construction) for the log
+    _cuda_on = None
+    if getattr(model, "generator", None) is not None:
+        for blk in model.generator.blocks:
+            if getattr(blk, "mixer_type", None) == "ttt":
+                _cuda_on = getattr(blk.attn, "use_cuda_kernel", None)
+                break
+    print(f"[infer] use_incremental_gen={model.use_incremental_gen} | "
+          f"ttt_cuda_kernel={_cuda_on}")
 
     model.train_config = train_config
     
