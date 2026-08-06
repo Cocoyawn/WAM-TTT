@@ -1,0 +1,20 @@
+data:
+  augmentation:
+    center_crop: true
+    center_crop_ratio: 0.9
+model:
+  diffusion_steps: 5
+  scheduler_type: "flow_match"
+  attn_implementation: "sdpa"
+eval:
+  finetuned_checkpoint: "/mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/ttt_chunk256_libero_object_wu4500/checkpoint_final.pt"
+  task_suite_name: "libero_object"
+  task_ids: [55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95]
+  shard_tag: "envgen_tttwu45_3w_cambg_shard11"
+  num_steps_wait: 10
+  num_steps_execute: 8
+  num_trials_per_task: 1
+  seed: 42
+  image_size: 256
+  resume_episodes: 0
+  resume_successes: 0

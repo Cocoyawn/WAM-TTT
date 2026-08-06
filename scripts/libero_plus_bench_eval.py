@@ -39,6 +39,12 @@ from src.evaluation.libero_bench.robot_utils import (
     get_model,
     set_seed_everywhere,
 )
+from src.evaluation.libero_bench.context_bank import (
+    load_frames,
+    load_manifest,
+    preprocess_context_frames,
+    select_entry,
+)
 
 
 class DictConfig:
@@ -58,6 +64,9 @@ def eval_libero(cfg) -> None:
 
     model = get_model(cfg)
     processor = get_vlanext_processor(cfg)
+    # Model/processor construction may consume RNG state. Re-seed after loading
+    # so paired context conditions use the same diffusion sampling stream.
+    set_seed_everywhere(cfg.eval.seed)
 
     checkpoint_path = Path(cfg.eval.finetuned_checkpoint)
 
@@ -149,6 +158,26 @@ def eval_libero(cfg) -> None:
     center_crop = bool(getattr(aug, "center_crop", getattr(cfg.eval, "center_crop", False)))
     center_crop_ratio = float(getattr(aug, "center_crop_ratio", 1.0))
 
+    # Context probe: prepend a fixed number of frames from a successful
+    # demonstration to the current visual input. This is intentionally
+    # prompt-only; it does not change TTT update behavior or model parameters.
+    context_mode = str(getattr(cfg.eval, "context_mode", "none") or "none")
+    context_frames = int(getattr(cfg.eval, "context_frames", 0) or 0)
+    context_manifest_path = str(getattr(cfg.eval, "context_manifest", "") or "")
+    context_manifest = None
+    if context_mode != "none":
+        if input_modality not in {"image", "video"}:
+            raise ValueError(
+                f"context probe supports image/video inputs, got {input_modality!r}"
+            )
+        if context_frames <= 0:
+            raise ValueError("eval.context_frames must be positive when context_mode is enabled")
+        if not context_manifest_path:
+            raise ValueError("eval.context_manifest is required when context_mode is enabled")
+        context_manifest = load_manifest(context_manifest_path)
+        print(f"Context probe: mode={context_mode}, frames={context_frames}, "
+              f"manifest={context_manifest_path}")
+
     resume_episodes = int(getattr(cfg.eval, "resume_episodes", 0) or 0)
     resume_successes = int(getattr(cfg.eval, "resume_successes", 0) or 0)
     resume_successes = min(resume_successes, resume_episodes)
@@ -176,6 +205,44 @@ def eval_libero(cfg) -> None:
         initial_states = task_suite.get_task_init_states(task_id)
 
         env, task_description = get_libero_env(task, "vlanext", resolution=256)
+
+        context_video = []
+        context_video_wrist = []
+        if context_manifest is not None:
+            context_entry = select_entry(
+                context_manifest,
+                task_description,
+                context_mode,
+                seed=int(getattr(cfg.eval, "context_seed", 42)) + int(task_id),
+            )
+            if context_entry is None:
+                raise RuntimeError(
+                    f"No {context_mode} demonstration found for task {task_id}: "
+                    f"{task_description!r}. Refusing to run a confounded probe."
+                )
+            context_video, context_video_wrist = load_frames(
+                context_entry, max_frames=context_frames
+            )
+            context_video = preprocess_context_frames(
+                context_video,
+                resize_size,
+                center_crop=center_crop,
+                center_crop_ratio=center_crop_ratio,
+            )
+            if context_video_wrist is not None:
+                context_video_wrist = preprocess_context_frames(
+                    context_video_wrist,
+                    resize_size,
+                    center_crop=center_crop,
+                    center_crop_ratio=center_crop_ratio,
+                )
+            log_file.write(
+                f"Context: mode={context_mode} frames={len(context_video)} "
+                f"instruction={context_entry.get('instruction', '')!r} "
+                f"path={context_entry.get('path', '')}\n"
+            )
+            print(f"Context entry: {context_entry.get('instruction', '')!r} "
+                  f"({len(context_video)} frames)")
 
         task_episodes, task_successes = 0, 0
 
@@ -258,6 +325,11 @@ def eval_libero(cfg) -> None:
                         "state_history": state_history,
                         "action_history": action_history,
                     }
+                    if context_video:
+                        observation["context_video"] = context_video
+                        observation["context_video_wrist"] = (
+                            context_video_wrist if context_video_wrist is not None else context_video
+                        )
 
                     if len(action_buffer) == 0:
                         if torch.cuda.is_available():

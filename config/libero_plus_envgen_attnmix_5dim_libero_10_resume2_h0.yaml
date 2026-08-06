@@ -1,0 +1,43 @@
+data:
+  augmentation:
+    center_crop: true
+    center_crop_ratio: 0.9
+model:
+  diffusion_steps: 5
+  scheduler_type: flow_match
+  attn_implementation: sdpa
+eval:
+  finetuned_checkpoint: /mnt/afs-h200/yuyangcheng/workplace/VLANeXt/VLANeXt_ablation_wm/attention_libero_mixed_clean/checkpoint_final.pt
+  task_suite_name: libero_10
+  task_ids:
+  - 1865
+  - 1873
+  - 1881
+  - 1889
+  - 1897
+  - 1905
+  - 1913
+  - 1921
+  - 1929
+  - 2249
+  - 2257
+  - 2265
+  - 2273
+  - 2281
+  - 2289
+  - 2297
+  - 2305
+  - 2313
+  - 2321
+  - 2329
+  - 2337
+  shard_tag: envgen_attnmix_5dim_libero_10_resume2_h0
+  num_steps_wait: 10
+  num_steps_execute: 8
+  num_trials_per_task: 1
+  seed: 42
+  image_size: 256
+  resume_episodes: 0
+  resume_successes: 0
+  ttt_use_cuda_kernel: false
+  use_incremental_gen: false

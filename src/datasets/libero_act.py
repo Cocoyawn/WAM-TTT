@@ -285,6 +285,7 @@ class LiberoMixedAct(IterableDataset):
         self,
         data_root,
         version="1.0.0",
+        suites=None,
         length=None,
         history_len=15,
         future_len=15,
@@ -298,6 +299,7 @@ class LiberoMixedAct(IterableDataset):
         future_image_mode="horizon",
     ):
         super().__init__()
+        self.suites = tuple(suites) if suites is not None else self.SUITES
         self._sub_datasets = [
             LiberoAct(
                 data_path=os.path.join(data_root, suite, version),
@@ -315,7 +317,7 @@ class LiberoMixedAct(IterableDataset):
                 load_future_image=load_future_image,
                 future_image_mode=future_image_mode,
             )
-            for suite in self.SUITES
+            for suite in self.suites
         ]
 
     def __iter__(self):

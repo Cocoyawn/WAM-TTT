@@ -662,27 +662,27 @@ class VLANeXt(nn.Module):
             raise ValueError(f"Unknown dct_similarity_type: {sim_type!r}. "
                              f"Options are: 'mse', 'mae', 'cosine'.")
 
-    def forward(self, input_ids=None, attention_mask=None, actions=None, proprioception=None, history_actions=None, proprio_attention_mask=None, pixel_values=None, pixel_values_videos=None, image_grid_thw=None, video_grid_thw=None, future_images=None, task=None, token_type_ids=None):
+    def forward(self, input_ids=None, attention_mask=None, actions=None, proprioception=None, history_actions=None, proprio_attention_mask=None, pixel_values=None, pixel_values_videos=None, image_grid_thw=None, video_grid_thw=None, future_images=None, task=None, token_type_ids=None, return_parts=False):
         if task == "action_vqvae_pretrain":
             return self.forward_action_vqvae_pretrain(actions)
-            
+
         if self.loss_type == "regression":
             return self._forward_regression(
                 input_ids, attention_mask, actions, proprioception, history_actions, proprio_attention_mask,
-                pixel_values, pixel_values_videos, image_grid_thw, video_grid_thw, future_images, token_type_ids=token_type_ids
+                pixel_values, pixel_values_videos, image_grid_thw, video_grid_thw, future_images, token_type_ids=token_type_ids, return_parts=return_parts
             )
         elif self.loss_type == "classification":
             return self._forward_classification(
                 input_ids, attention_mask, actions, proprioception, history_actions, proprio_attention_mask,
-                pixel_values, pixel_values_videos, image_grid_thw, video_grid_thw, future_images, token_type_ids=token_type_ids
+                pixel_values, pixel_values_videos, image_grid_thw, video_grid_thw, future_images, token_type_ids=token_type_ids, return_parts=return_parts
             )
         elif self.loss_type == "diffusion":
             return self._forward_diffusion(
                 input_ids, attention_mask, actions, proprioception, history_actions, proprio_attention_mask,
-                pixel_values, pixel_values_videos, image_grid_thw, video_grid_thw, future_images, token_type_ids=token_type_ids
+                pixel_values, pixel_values_videos, image_grid_thw, video_grid_thw, future_images, token_type_ids=token_type_ids, return_parts=return_parts
             )
 
-    def _forward_classification(self, input_ids, attention_mask, actions, proprioception, history_actions, proprio_attention_mask, pixel_values, pixel_values_videos, image_grid_thw, video_grid_thw, future_images=None, token_type_ids=None):
+    def _forward_classification(self, input_ids, attention_mask, actions, proprioception, history_actions, proprio_attention_mask, pixel_values, pixel_values_videos, image_grid_thw, video_grid_thw, future_images=None, token_type_ids=None, return_parts=False):
         connector_out, hidden_states = self.get_vlm_condition(
             input_ids, attention_mask, proprioception=proprioception, proprio_attention_mask=proprio_attention_mask,
             pixel_values=pixel_values, pixel_values_videos=pixel_values_videos,
@@ -754,15 +754,23 @@ class VLANeXt(nn.Module):
                 
                 pred_action_continuous = torch.cat([pred_pose, pred_gripper], dim=-1)
 
+        loss_action = loss
+        loss_dct = None
         if self.dct_loss_weight > 0 and pred_action_continuous is not None:
              loss_dct = self._compute_dct_loss(pred_action_continuous.float(), actions.float())
              loss = loss + self.dct_loss_weight * loss_dct
-        
+
         if self.future_image_loss_weight > 0:
             loss = loss + self.future_image_loss_weight * loss_img
+        if return_parts:
+            return loss, {
+                "loss_action": loss_action.detach(),
+                "loss_dct": (loss_dct.detach() if loss_dct is not None else None),
+                "loss_img": (loss_img.detach() if isinstance(loss_img, torch.Tensor) else None),
+            }
         return loss
 
-    def _forward_regression(self, input_ids, attention_mask, actions, proprioception, history_actions, proprio_attention_mask, pixel_values, pixel_values_videos, image_grid_thw, video_grid_thw, future_images=None, token_type_ids=None):
+    def _forward_regression(self, input_ids, attention_mask, actions, proprioception, history_actions, proprio_attention_mask, pixel_values, pixel_values_videos, image_grid_thw, video_grid_thw, future_images=None, token_type_ids=None, return_parts=False):
         connector_out, hidden_states = self.get_vlm_condition(
             input_ids, attention_mask, proprioception=proprioception, proprio_attention_mask=proprio_attention_mask,
             pixel_values=pixel_values, pixel_values_videos=pixel_values_videos,
@@ -789,17 +797,25 @@ class VLANeXt(nn.Module):
              raise ValueError(f"Unknown condition type: {self.condition_type}")
 
         if actions.ndim == 2: actions = actions.unsqueeze(1)
-        loss = F.mse_loss(pred_actions, actions)
+        loss_action = F.mse_loss(pred_actions, actions)
+        loss = loss_action
 
+        loss_dct = None
         if self.dct_loss_weight > 0:
             loss_dct = self._compute_dct_loss(pred_actions.float(), actions.float())
             loss = loss + self.dct_loss_weight * loss_dct
-            
+
         if self.future_image_loss_weight > 0:
             loss = loss + self.future_image_loss_weight * loss_img
+        if return_parts:
+            return loss, {
+                "loss_action": loss_action.detach(),
+                "loss_dct": (loss_dct.detach() if loss_dct is not None else None),
+                "loss_img": (loss_img.detach() if isinstance(loss_img, torch.Tensor) else None),
+            }
         return loss
 
-    def _forward_diffusion(self, input_ids, attention_mask, actions, proprioception, history_actions, proprio_attention_mask, pixel_values, pixel_values_videos, image_grid_thw, video_grid_thw, future_images=None, token_type_ids=None):
+    def _forward_diffusion(self, input_ids, attention_mask, actions, proprioception, history_actions, proprio_attention_mask, pixel_values, pixel_values_videos, image_grid_thw, video_grid_thw, future_images=None, token_type_ids=None, return_parts=False):
         connector_out, hidden_states = self.get_vlm_condition(
             input_ids, attention_mask, proprioception=proprioception, proprio_attention_mask=proprio_attention_mask,
             pixel_values=pixel_values, pixel_values_videos=pixel_values_videos,
@@ -841,8 +857,10 @@ class VLANeXt(nn.Module):
         else:
              raise ValueError(f"Unknown condition type: {self.condition_type}")
         
-        loss = F.mse_loss(pred, target)
+        loss_action = F.mse_loss(pred, target)
+        loss = loss_action
 
+        loss_dct = None
         if self.dct_loss_weight > 0:
             pred_x_start = None
             if self.scheduler_type == "flow_match":
@@ -859,9 +877,15 @@ class VLANeXt(nn.Module):
             if pred_x_start is not None:
                  loss_dct = self._compute_dct_loss(pred_x_start.float(), actions.float())
                  loss = loss + self.dct_loss_weight * loss_dct
-            
+
         if self.future_image_loss_weight > 0:
             loss = loss + self.future_image_loss_weight * loss_img
+        if return_parts:
+            return loss, {
+                "loss_action": loss_action.detach(),
+                "loss_dct": (loss_dct.detach() if loss_dct is not None else None),
+                "loss_img": (loss_img.detach() if isinstance(loss_img, torch.Tensor) else None),
+            }
         return loss
 
     @torch.no_grad()

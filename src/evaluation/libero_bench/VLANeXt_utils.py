@@ -4,6 +4,11 @@ from PIL import Image
 from transformers import AutoProcessor, AutoTokenizer, SiglipImageProcessor
 from src.models.VLANeXt import VLANeXt, LlamaProcessorWrapper
 from src.models.rt2_like_baseline import RT2LikeBaseline
+from src.evaluation.libero_bench.context_bank import (
+    compose_multiview_image_inputs,
+    compose_multiview_video_inputs,
+    prepend_context,
+)
 
 def _get_checkpoint_path(cfg) -> str:
     if hasattr(cfg, "eval") and hasattr(cfg.eval, "finetuned_checkpoint"):
@@ -189,10 +194,14 @@ def get_vla_action(cfg, model, processor, obs, task_label):
 
     all_images = obs.get("image_history", [obs["full_image"]])
     images_np = _take_last(all_images, obs["full_image"], history_len)
+    context_np = obs.get("context_video", []) or []
+    context_pil = [Image.fromarray(img) for img in context_np]
 
     if view_mode == "multi":
         all_wrist = obs.get("image_history_wrist", [obs["full_image_wrist"]])
         wrist_np = _take_last(all_wrist, obs["full_image_wrist"], history_len)
+        context_wrist_np = obs.get("context_video_wrist", context_np) or context_np
+        context_wrist_pil = [Image.fromarray(img) for img in context_wrist_np]
 
     pil_images = [Image.fromarray(img) for img in images_np]
     if view_mode == "multi":
@@ -229,11 +238,15 @@ def get_vla_action(cfg, model, processor, obs, task_label):
             raise ValueError(f"{proc_cls_name} implementation in VLANeXt currently supports 'image' modality only.")
         content = []
         if view_mode == "multi":
-            content.extend([{"type": "video", "video": pil_images}, {"type": "video", "video": pil_wrist}])
-            videos = [pil_images, pil_wrist]
+            exterior, wrist = compose_multiview_video_inputs(
+                pil_images, pil_wrist, context_pil, context_wrist_pil, len(context_pil)
+            )
+            content.extend([{"type": "video", "video": exterior}, {"type": "video", "video": wrist}])
+            videos = [exterior, wrist]
         else:
-            content.append({"type": "video", "video": pil_images})
-            videos = [pil_images]
+            video = prepend_context(pil_images, context_pil, len(context_pil))
+            content.append({"type": "video", "video": video})
+            videos = [video]
 
         content.append({"type": "text", "text": task_label})
         messages = [{"role": "user", "content": content}]
@@ -249,9 +262,11 @@ def get_vla_action(cfg, model, processor, obs, task_label):
 
     elif input_modality == "image":
         if view_mode == "multi":
-            images = [pil_images[-1], pil_wrist[-1]]
+            images = compose_multiview_image_inputs(
+                pil_images[-1], pil_wrist[-1], context_pil, context_wrist_pil, len(context_pil)
+            )
         else:
-            images = [pil_images[-1]]
+            images = prepend_context(pil_images[-1:], context_pil, len(context_pil))
 
         if is_llama:
             text = [task_label]

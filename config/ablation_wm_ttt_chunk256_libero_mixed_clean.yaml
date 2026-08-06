@@ -1,0 +1,112 @@
+project:
+  name: VLANeXt_ablation_wm_ttt_chunk256_libero_mixed_clean
+  output_dir: /mnt/afs-h200/yuyangcheng/workplace/VLANeXt
+  log_interval: 10
+  save_interval: 10000
+  use_wandb: true
+data:
+  dataset_name: libero_mixed
+  data_root: /mnt/afs-h200/yuyangcheng/data/LIBERO_modified
+  mixed_suites:
+  - libero_spatial_no_noops
+  - libero_object_no_noops
+  - libero_goal_no_noops
+  - libero_10_no_noops
+  full_sequence: true
+  history_len: 8
+  future_len: 8
+  buffer_size: 10000
+  batch_size: 16
+  max_steps: 30000
+  num_workers: 2
+  input_modality: image
+  view_mode: multi
+  augmentation:
+    enabled: true
+    random_resized_crop:
+      scale:
+      - 0.8
+      - 1.0
+      ratio:
+      - 0.9
+      - 1.1
+    random_brightness:
+    - 0.2
+    random_contrast:
+    - 0.8
+    - 1.2
+    random_saturation:
+    - 0.8
+    - 1.2
+    random_hue:
+    - 0.05
+    augment_order:
+    - random_resized_crop
+    - random_brightness
+    - random_contrast
+    - random_saturation
+    - random_hue
+model:
+  model_type: vlanext
+  lmm_path: /mnt/afs-h200/yuyangcheng/models/Qwen3-VL-2B-Instruct
+  vision_encoder_path: google/siglip2-base-patch16-256
+  backbone_mode: finetune
+  action_dim: 7
+  loss_type: diffusion
+  num_train_timesteps: 1000
+  num_inference_timesteps: 10
+  scheduler_type: flow_match
+  num_bins: 256
+  action_vqvae:
+    enabled: false
+    frozen: true
+    codebook_size: 1024
+    hidden_size: 256
+    depth: 4
+    num_heads: 8
+    steps: 1000
+    learning_rate: 0.001
+  condition_type: soft
+  num_queries: 16
+  use_transformer_connector: true
+  connector_depth: 2
+  connector_num_heads: 4
+  policy_hidden_size: 1024
+  policy_depth: 29
+  policy_num_heads: 16
+  policy_mlp_ratio: 4.0
+  policy_mixer_type: ttt
+  policy_mix_every_n: 4
+  future_image_loss_weight: 1.0
+  generator_hidden_size: 768
+  generator_depth: 29
+  generator_num_heads: 12
+  generator_mlp_ratio: 4.0
+  generator_mixer_type: ttt
+  generator_mix_every_n: 4
+  generator_ttt_chunk_size: 256
+  future_image_mode: horizon
+  dct_loss_weight: 0.1
+  dct_freq_split: 0.125
+  dct_low_freq_weight: 5.0
+  dct_high_freq_weight: 0.0
+  dct_similarity_type: mse
+  use_proprio_input_vlm: true
+  use_transformer_proprio_projector: false
+  projector_depth: 2
+  projector_num_heads: 4
+  use_action_input_policy: false
+  gradient_checkpointing: true
+  attn_implementation: sdpa
+train:
+  seed: 2345
+  resume_path: ''
+  pretrained_checkpoint: ''
+  learning_rate: 0.0001
+  weight_decay: 0.01
+  warmup_steps: 4500
+  gradient_accumulation_steps: 1
+  max_grad_norm: 1.0
+  device: cuda
+  distributed: true
+  dist_backend: nccl

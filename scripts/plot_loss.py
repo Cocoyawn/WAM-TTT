@@ -1,9 +1,10 @@
 #!/usr/bin/env python
-"""Render VLANeXt training loss curves as ASCII — no wandb / browser needed.
+"""Render VLANeXt training loss curves in the terminal — no wandb / browser needed.
 
-Reads loss from logs/*.log (each line has `loss=<float>`; DDP logs each step ~2x, auto-deduped
-by sampling). Works while a run is still training (wandb hides history for running runs — this
-is the immediate alternative). Supports overlaying multiple runs for divergence comparison.
+Bars are drawn with Unicode block-drawing chars (█ + 1/8-cell partials ▏▎▍▌▋▊▉) for smooth,
+solid bars, not '#'. Reads loss from logs/*.log (each line has `loss=<float>`; DDP logs each
+step ~2x, auto-deduped by sampling). Works while a run is still training (wandb hides history
+for running runs — this is the immediate alternative). Overlays multiple runs for comparison.
 
 Usage:
   python scripts/plot_loss.py                       # list available runs
@@ -42,12 +43,26 @@ def sample(vals, n):
     step = len(vals) / n
     return [(int(i*step), vals[int(i*step)]) for i in range(n)]
 
+# Unicode block-drawing bars (制表符 / box-drawing). Full block + 1/8-width partial blocks
+# give sub-character horizontal resolution, so bar length is smooth, not quantized to whole chars.
+_FULL = "█"                              # █  full block
+_PARTIAL = " ▏▎▍▌▋▊▉"   # ' '▏▎▍▌▋▊▉ : 0/8 .. 7/8 cell
+
+def _bar(frac, width):
+    """frac in [0,1] -> a width-cell block bar with 1/8-cell horizontal precision."""
+    units = max(0.0, frac) * width            # number of full cells to fill (fractional)
+    full = int(units)
+    eighths = int(round((units - full) * 8))
+    if eighths == 8:                          # round-up carries into a whole cell
+        full += 1; eighths = 0
+    return _FULL * full + (_PARTIAL[eighths] if eighths else "")
+
 def plot_one(vals, label, rows, width=46, scale=None):
     """scale=(lo,hi) forces a shared y-axis so multiple curves are directly comparable.
     If None, auto-scales to this run's own min/max."""
     if not vals:
         print(f"[{label}] no loss data"); return
-    pts = sample(vals, 24)
+    pts = sample(vals, rows)
     if scale:
         lo, hi = scale
     else:
@@ -56,8 +71,8 @@ def plot_one(vals, label, rows, width=46, scale=None):
     tag = "shared-scale" if scale else "auto-scale"
     print(f"\n=== {label} ===  ({len(vals)} pts, loss {vals[0]:.2f} -> {vals[-1]:.2f}, min {min(vals):.2f})  [{tag} {lo:.1f}-{hi:.1f}]")
     for idx, v in pts:
-        bar = "#" * max(0, int((v - lo) / span * width))
-        print(f"  {idx:>6}  {v:6.2f}  {bar}")
+        bar = _bar((v - lo) / span, width)
+        print(f"  {idx:>6}  {v:6.2f}  │{bar}")
 
 def plot_compare(series, rows, width=40):
     """series = [(label, vals)]. Output: (1) each full curve on a SHARED y-scale so they're

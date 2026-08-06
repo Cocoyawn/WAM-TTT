@@ -27,10 +27,12 @@ SPx = TC['libero_spatial']
 def diff_of(i): return SPx[i]['difficulty_level']
 
 ttt16  = collect('ttt16',  list(range(12)))
+ttt64  = collect('ttt64',  list(range(8)))
 ttt256 = collect('ttt256', list(range(8)))
 att    = collect('attn',   list(range(13)))
-common = set(ttt16) & set(ttt256) & set(att)
+common = set(ttt16) & set(ttt64) & set(ttt256) & set(att)
 MODELS = [('TTT-16', ttt16, '#8a9a87', 'o'),
+          ('TTT-64', ttt64, '#c2a86b', 'D'),
           ('TTT-256', ttt256, '#6b8cae', 's'),
           ('Attention', att, '#bb8e7d', '^')]
 

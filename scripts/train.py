@@ -21,7 +21,9 @@ from torchvision.transforms import functional as TVF
 from src.models.VLANeXt import VLANeXt
 from src.models.rt2_like_baseline import RT2LikeBaseline
 from src.datasets.libero_act_old import LiberoAct
+from src.datasets.libero_act import LiberoMixedAct
 from src.datasets.droid_act import DroidAct
+from src.datasets.molmoact_droid_act import MolmoActDroidAct
 
 
 # -----------------------------------------------------------------------------
@@ -298,6 +300,8 @@ def train(config):
     dataset_name = config['data'].get('dataset_name', 'libero')
     if dataset_name == "droid":
         fps = 15.0
+    elif dataset_name == "molmoact_droid":
+        fps = 15.0
     elif dataset_name == "libero":
         fps = 20.0
     else:
@@ -451,6 +455,16 @@ def train(config):
         droid_path = os.path.join(data_root, "1.0.1")
         if global_rank == 0:
             print(f"Initializing DROID Dataset: {droid_path}")
+    elif dataset_name == "molmoact_droid":
+        # LeRobot v3.0 dataset root (contains data/ meta/ videos/). Used directly.
+        if global_rank == 0:
+            print(f"Initializing MolmoAct2-DROID (LeRobot v3) Dataset from: {data_root}")
+    elif dataset_name == "libero_mixed":
+        # Joint training over all four LIBERO suites (spatial/object/goal/10).
+        # LiberoMixedAct takes data_root directly and globs each suite subdir;
+        # every sub-dataset is normalized with the shared libero_mixed stats.
+        if global_rank == 0:
+            print(f"Initializing Libero MIXED Dataset (4 suites) from: {data_root}")
     else:
         task_suite = config['data']['task_suite_name']
         libero_path = os.path.join(data_root, task_suite, "1.0.0")
@@ -471,7 +485,7 @@ def train(config):
     if global_rank == 0:
         print(f"Total Batch Size: {total_batch_size}, World Size: {world_size}, Grad Acc Steps: {gradient_accumulation_steps}, Per-Device Batch Size: {per_device_batch_size}")
 
-    default_buffer_size = 30000 if dataset_name == "droid" else 10000
+    default_buffer_size = 30000 if dataset_name in ("droid", "molmoact_droid") else 10000
     buffer_size = config['data'].get("buffer_size", default_buffer_size)
     if global_rank == 0:
         print(f"Dataset Shuffle Buffer Size: {buffer_size}")
@@ -481,6 +495,35 @@ def train(config):
             ds = DroidAct(
                 droid_path=droid_path,
                 dataset_name="droid",
+                history_len=history_len,
+                future_len=config['data']['future_len'],
+                full_sequence=full_sequence,
+                input_modality=input_modality,
+                view_mode=view_mode,
+                load_future_image=load_future_image,
+                future_image_mode=future_image_mode,
+                buffer_size=buffer_size,
+            )
+        elif dataset_name == "molmoact_droid":
+            ds = MolmoActDroidAct(
+                data_root=data_root,
+                dataset_name="molmoact_droid",
+                history_len=history_len,
+                future_len=config['data']['future_len'],
+                full_sequence=full_sequence,
+                input_modality=input_modality,
+                view_mode=view_mode,
+                load_future_image=load_future_image,
+                future_image_mode=future_image_mode,
+                buffer_size=buffer_size,
+            )
+        elif dataset_name == "libero_mixed":
+            ds = LiberoMixedAct(
+                data_root=data_root,
+                suites=config['data'].get('mixed_suites', [
+                    "libero_spatial_no_noops", "libero_object_no_noops",
+                    "libero_goal_no_noops", "libero_10_no_noops",
+                ]),
                 history_len=history_len,
                 future_len=config['data']['future_len'],
                 full_sequence=full_sequence,

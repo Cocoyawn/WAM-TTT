@@ -20,6 +20,7 @@ from src.datasets.libero_act_old import (
     action_min_goal, action_max_goal,
     action_min_10, action_max_10,
 )
+from src.datasets.libero_act import action_min_mixed, action_max_mixed
 
 from src.evaluation.libero_bench.libero_utils import (
     get_libero_dummy_action,
@@ -85,9 +86,13 @@ def eval_libero(cfg) -> None:
     print(f"Task suite: {cfg.eval.task_suite_name}")
     log_file.write(f"Task suite: {cfg.eval.task_suite_name}\n")
 
-    train_suite_name = model.train_config['data']['task_suite_name']
-    
-    if 'spatial' in train_suite_name:
+    train_suite_name = model.train_config['data'].get('task_suite_name', '')
+    train_dataset_name = model.train_config['data'].get('dataset_name', '')
+
+    if 'mixed' in train_suite_name or 'mixed' in train_dataset_name:
+        action_min = np.array(action_min_mixed)
+        action_max = np.array(action_max_mixed)
+    elif 'spatial' in train_suite_name:
         action_min = np.array(action_min_spatial)
         action_max = np.array(action_max_spatial)
     elif 'object' in train_suite_name:
@@ -99,9 +104,6 @@ def eval_libero(cfg) -> None:
     elif '10' in train_suite_name:
         action_min = np.array(action_min_10)
         action_max = np.array(action_max_10)
-    elif 'mixed' in train_suite_name:
-        action_min = np.array(action_min_mixed)
-        action_max = np.array(action_max_mixed)
     else:
         action_min = np.array(action_min_10)
         action_max = np.array(action_max_10)
