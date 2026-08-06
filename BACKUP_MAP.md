@@ -23,7 +23,7 @@ git clone https://github.com/Cocoyawn/WAM-TTT.git
 | Local/working-tree scope | Hugging Face repository | Type | Status |
 |---|---|---|---|
 | LIBERO VLANeXt TTT/ablation checkpoints | `Cocoyawn32/VLANeXt-ablation-ckpt` | public dataset | Existing public backup; includes TTT, attention/GDN comparison checkpoints and three WM evaluation caches |
-| DROID VLANeXt comparison and TTT checkpoint | `Cocoyawn32/vlanext-robolab-droid-eval` | public model | Existing public backup; includes `checkpoints/ttt_140k.pt`, comparison checkpoint, code, and base-model files |
+| DROID/Kairos comparison artifacts | `Cocoyawn32/vlanext-robolab-droid-eval` | public model | Existing backup, recorded for reference only; outside the VLANeXt-TTT scope |
 | Kairos auxiliary model states | `Cocoyawn32/VLANeXt-kairos-ckpt` | public model | Existing auxiliary backup; not the primary VLANeXt-TTT deliverable |
 | Earlier local sanitized bundle | `Cocoyawn32/local-workspace-backup-20260806` | private dataset | Existing private backup; contains the sanitized code archive, manifest, and selected Kairos asset |
 
@@ -35,16 +35,10 @@ hf download Cocoyawn32/vlanext-robolab-droid-eval --repo-type model --local-dir 
 hf download Cocoyawn32/VLANeXt-kairos-ckpt --repo-type model --local-dir ./VLANeXt_kairos_ckpt
 ```
 
-## Important local artifacts not matched byte-for-byte to an existing HF file
+## Scope note
 
-The following local DeepSpeed model-state snapshot is related to the DROID TTT
-experiments and is not the same file as the existing `ttt_140k.pt` artifact:
-
-`workplace/VLANeXt-kairos_ckpts/kairos_molmoact_droid/ttt256_1to4_bs64_32policydepth_tight_no_dct_freeze_vae_prompter_video_gen_remote8/ds_checkpoint_final/global_step100000/mp_rank_00_model_states.pt`
-
-It was not uploaded in this run because the official Hugging Face endpoint was
-unreachable from this machine. The public HF mirror was used only for
-read-only metadata and was not given credentials.
+DROID TTT checkpoints under `workplace/VLANeXt-kairos_ckpts` belong to the
+VLANeXt-Kairos project and are intentionally out of scope for this backup map.
 
 ## Deliberately excluded from the public GitHub backup
 
