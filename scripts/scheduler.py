@@ -59,6 +59,10 @@ QUEUE = [
     {"kind": "train", "tag": "swa_ttt", "cfg": "ablation_wm_swa_ttt", "save_dir": "swa_ttt_libero_spatial", "gpus": 4},
     {"kind": "train", "tag": "hp_object", "cfg": "ablation_wm_ttt_chunk256_libero_object", "save_dir": "ttt_chunk256_libero_object", "gpus": 2},
     {"kind": "train", "tag": "hp_goal",   "cfg": "ablation_wm_ttt_chunk256_libero_goal",   "save_dir": "ttt_chunk256_libero_goal",   "gpus": 2},
+    # swa_gdn viability re-test: resume checkpoint_10000 -> 60k steps (config carries resume_path + max_steps:60000).
+    # High priority (before hp_long). 4-GPU DDP (pure DDP -> world_size change is resume-safe; optimizer state
+    # is replicated, not sharded). Needs all 4 cards free (waits for hp_object AND hp_goal to finish).
+    {"kind": "train", "tag": "swa_gdn_60k", "cfg": "ablation_wm_swa_gdn_60k", "save_dir": "swa_gdn_libero_spatial", "gpus": 4},
     {"kind": "train", "tag": "hp_long",   "cfg": "ablation_wm_ttt_chunk256_libero_long",   "save_dir": "ttt_chunk256_libero_long",   "gpus": 2},
 ]
 # eval resource model: each shard worker = 1 GPU + ~22GB RAM, can pack many per card.
@@ -67,7 +71,7 @@ EVAL_MAX_WORKERS = 8            # cap (RAM-bound); scheduler launches as many as
 PLUS_DIR = "third_party/LIBERO-plus"
 
 ENV = dict(os.environ,
-           WANDB_API_KEY="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",
+           WANDB_API_KEY=os.environ.get("WANDB_API_KEY", ""),
            TORCHDYNAMO_DISABLE="1",
            PYTHONPATH=REPO)
 
@@ -166,6 +170,15 @@ def proc_alive(pid):
     except (OSError, TypeError):
         return False
 
+def train_procs_alive(cfg):
+    """Authoritative liveness for a train job: are ANY processes still referencing its --config?
+    The recorded Popen pid is unreliable for torchrun (the captured pid can differ from the live
+    launcher, and a slow 4-GPU + big-ckpt start takes minutes), so a single os.kill(pid,0) can
+    read 'dead' while the DDP ranks are alive and training. pgrep on the config is the same signal
+    kill_job_zombies already trusts, so reuse it. (Fix 2026-06-12: this mismatch + no warmup grace
+    made the reaper kill live swa_gdn/hp_long trainings during their startup, then GIVEUP.)"""
+    return bool(sh(f"pgrep -f 'config/{cfg}.yaml'"))
+
 def log_has_fatal(cfg):
     lg = os.path.join(LOGDIR, f"{cfg}.log")
     if not os.path.exists(lg):
@@ -250,8 +263,21 @@ def main():
             if is_done(job):
                 j.update(status="done", gpus=[]); log(f"DONE {tag}"); last_progress = now
             elif job["kind"] == "train":
-                if not proc_alive(j.get("pid")):
-                    fatal = log_has_fatal(job["cfg"]) or "no-final-ckpt"
+                # Robust liveness (fix 2026-06-12). The recorded Popen pid is unreliable for a
+                # torchrun job (captured pid can mismatch the live launcher) and a 4-GPU DDP + 20GB
+                # ckpt resume takes minutes to stabilize, so the old single os.kill(pid,0) check read
+                # 'dead' on a healthy-but-slow start and the reaper kill -9'd the live ranks.
+                #   * procs_gone : NO process references this config AND the recorded pid is dead.
+                #                  pgrep is the same authoritative signal kill_job_zombies trusts.
+                #   * fatal_sig  : a real crash signature (OOM / ChildFailedError / ...) in the log.
+                #   * in_warmup  : within WARMUP_SEC of launch — a slow start is NOT a failure.
+                # Fail only when procs are actually gone, and either warmup has elapsed or the log
+                # shows a genuine crash (so a real early OOM still fails fast without a 5-min wait).
+                procs_gone = not train_procs_alive(job["cfg"]) and not proc_alive(j.get("pid"))
+                fatal_sig = log_has_fatal(job["cfg"])
+                in_warmup = (now - j.get("started", 0)) < WARMUP_SEC
+                if procs_gone and (not in_warmup or fatal_sig):
+                    fatal = fatal_sig or "no-final-ckpt"
                     kill_job_zombies(job["cfg"])
                     r = j.get("retries", 0)
                     if r < MAX_RETRIES:

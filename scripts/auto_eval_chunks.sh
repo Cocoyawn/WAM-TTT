@@ -8,7 +8,7 @@ set -u
 cd /mnt/afs-h200/yuyangcheng/workplace/VLANeXt
 
 VENV=/mnt/afs-h200/yuyangcheng/venvs/fla_triton32/bin/python
-export WANDB_API_KEY=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
+export WANDB_API_KEY="$WANDB_API_KEY"
 export MUJOCO_GL=osmesa
 export PYOPENGL_PLATFORM=osmesa
 export TORCHDYNAMO_DISABLE=1

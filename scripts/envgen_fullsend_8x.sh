@@ -13,7 +13,7 @@ VENV=/mnt/afs-h200/yuyangcheng/venvs/fla_triton32/bin/python
 CKPT="$REPO/VLANeXt_ablation_wm/ttt_libero_spatial/checkpoint_30000.pt"
 MARK="$REPO/VLANeXt_ablation_wm/ttt_libero_spatial/.fullsend8x_launched"
 
-export WANDB_API_KEY=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
+export WANDB_API_KEY="$WANDB_API_KEY"
 export MUJOCO_GL=osmesa PYOPENGL_PLATFORM=osmesa TORCHDYNAMO_DISABLE=1
 export LIBERO_CONFIG_PATH=/tmp/libero_plus_cfg
 
