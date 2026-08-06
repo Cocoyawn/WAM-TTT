@@ -7,6 +7,7 @@ Audit date: 2026-08-06 (UTC)
 - GitHub: `https://github.com/Cocoyawn/WAM-TTT`
 - The original local `HEAD` (`2711db7`) was already on `main`.
 - Backup commit: `24a10397b114e174187bcc04d0ee1a09058ef8c7`
+- Security cleanup commit: `b48d59a2f538d05f1d0337b188d8cc75a02b8420`
 - The backup commit adds 337 reviewed files (about 76 MB): TTT source changes,
   experiment configurations, safe helper scripts, and lightweight evaluation
   tables/curves.
@@ -49,11 +50,12 @@ read-only metadata and was not given credentials.
 
 - Training data, caches, logs, checkpoints, model weights, rollout videos, and
   the NVIDIA driver installer.
-- Local launch scripts containing hard-coded W&B credentials (and the modified
-  `scripts/scheduler.py` containing such a value).
+- About 30 local untracked launch scripts containing hard-coded W&B credentials.
 - `.env`/secret files, SSH material, proxy/environment files, and Git metadata.
 
-The public backup was scanned for common HF/GitHub/W&B/AWS/OpenAI token and
-private-key patterns; no matches were found in the files included in commit
-`24a10397`. This is not a proof that the local workspace contains no secrets;
-the excluded local files still require credential rotation and cleanup.
+The current public tree was scanned for common HF/GitHub/W&B/AWS/OpenAI token
+and private-key patterns; no matches were found in the included files after
+`b48d59a2`. The old W&B value existed in earlier public history; this cleanup
+did not rewrite history, so that credential must be revoked/rotated. This is
+not a proof that the local workspace contains no secrets; the excluded local
+files still require credential rotation and cleanup.
